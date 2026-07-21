@@ -11,6 +11,12 @@ Every verdict is computed from the parsed SOP text (not read off the manifest),
 then rendered as a compact stacked bar of discrepancies per pair by category,
 paired with an annotated EN-vs-ES detail panel, plus a flat issue table.
 Deterministic: no randomness, stable id-sorted ordering.
+
+Scope is ``per_sop``: alongside the corpus rollup, every English SOP gets its own
+entry in ``per_sop``. Documents with a translated variant carry that pair's
+discrepancy table, concrete findings and a comparison card in ``outdir/sops/``;
+documents without one are reported explicitly as ``n/a`` rather than omitted, so
+a reviewer can tell "checked, no variant" apart from "never checked".
 """
 
 from __future__ import annotations
@@ -72,11 +78,17 @@ def _values_by_unit(text: str) -> dict[str, set]:
     return out
 
 
-def _has_safety_section(sop: SOP) -> bool:
-    return any(
-        any(key in _strip_accents(sec.heading) for key in _SAFETY_KEYS)
+def _safety_headings(sop: SOP) -> list[str]:
+    """Headings that look like a safety/warning section, numbering stripped."""
+    return [
+        re.sub(r"^\s*\d+(?:\.\d+)*\.?\s*", "", sec.heading).strip()
         for sec in sop.sections
-    )
+        if any(key in _strip_accents(sec.heading) for key in _SAFETY_KEYS)
+    ]
+
+
+def _has_safety_section(sop: SOP) -> bool:
+    return bool(_safety_headings(sop))
 
 
 # --------------------------------------------------------------------------- #
@@ -242,6 +254,134 @@ def _plot(pairs: list[str], counts: dict[str, dict[str, int]],
 
 
 # --------------------------------------------------------------------------- #
+# Per-SOP assessment
+# --------------------------------------------------------------------------- #
+def _row_finding(row: dict, en: SOP, es: SOP) -> str:
+    """Spell one discrepancy row out as a concrete, reviewer-facing sentence."""
+    cat = row["category"]
+    if cat == "value":
+        return (f"Value mismatch: EN specifies {row['en_value']} where ES specifies "
+                f"{row['es_value']} — reconcile against the approved master.")
+    if cat == "format":
+        return (f"Number-format drift: EN uses {row['en_value']} while ES uses "
+                f"{row['es_value']}.")
+    if row["issue"].startswith("Section-count"):
+        return (f"Structure: {row['en_value']} in EN vs {row['es_value']} in ES — "
+                "one section was dropped in translation.")
+    # safety/warning section present on one side only
+    lacking, holder = (es, en) if row["es_value"] == "(missing)" else (en, es)
+    names = ", ".join(f"'{h}'" for h in _safety_headings(holder)) or "safety/warning content"
+    return (f"Missing section in {lacking.sop_id}: {names} exists in "
+            f"{holder.sop_id} only — re-translate before release.")
+
+
+def _plot_pair(en: SOP, es: SOP, rows: list[dict], by_cat: dict[str, int],
+               path: Path) -> str:
+    """One comparison card per translated pair: EN value vs ES value, per issue."""
+    from matplotlib.patches import Rectangle
+
+    n = max(len(rows), 1)
+    fig, ax0 = viz.new_fig(8.2, 1.45 + 0.62 * n)
+    ax0.remove()
+    ax = fig.add_subplot(fig.add_gridspec(1, 1, left=0.03, right=0.985,
+                                          top=0.80, bottom=0.04)[0])
+    ax.set_axis_off()
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, n + 0.9)
+
+    verdict = "FAIL" if rows else "PASS"
+    fig.suptitle(f"{en.sop_id} vs {es.sop_id} — translation harmonization",
+                 fontsize=12.5, fontweight="bold", color=viz.INK, y=0.975)
+    noun = "discrepancy" if len(rows) == 1 else "discrepancies"
+    ax.text(0.0, n + 0.62,
+            f"{len(rows)} {noun} — value {by_cat['value']}, "
+            f"format {by_cat['format']}, structure {by_cat['structure']}",
+            ha="left", va="center", fontsize=9, color=viz.MUTED)
+    ax.text(1.0, n + 0.62, verdict, ha="right", va="center", fontsize=10,
+            fontweight="bold", color=viz.BAD if rows else viz.GOOD)
+    ax.plot([0, 1], [n + 0.3] * 2, color=viz.MUTED, lw=0.9,
+            solid_capstyle="butt", clip_on=False, zorder=1)
+
+    if not rows:
+        ax.text(0.5, n / 2.0, "No discrepancies detected between EN and ES.",
+                ha="center", va="center", fontsize=10, color=viz.GOOD)
+        return viz.save(fig, path)
+
+    for i, r in enumerate(rows):
+        yc = n - 0.5 - i
+        if i % 2 == 0:
+            ax.add_patch(Rectangle((0, yc - 0.5), 1, 1, facecolor=viz.PANEL,
+                                   edgecolor="none", zorder=0))
+        cat = r["category"]
+        ax.plot([0.012], [yc + 0.2], marker="s", markersize=6.5, linestyle="none",
+                color=CAT_COLORS[cat], zorder=2, clip_on=False)
+        ax.text(0.038, yc + 0.2, CAT_LABELS.get(cat, cat.capitalize()), ha="left",
+                va="center", fontsize=9, fontweight="bold", color=viz.INK, zorder=2)
+        ax.text(0.20, yc + 0.2, "EN  " + _clip(r["en_value"]), ha="left",
+                va="center", fontsize=9, color=viz.INK, zorder=2)
+        ax.text(0.545, yc + 0.2, "ES  " + _clip(r["es_value"]), ha="left",
+                va="center", fontsize=9, color=viz.BAD, zorder=2)
+        ax.text(0.038, yc - 0.24, _clip(r["issue"], 105), ha="left", va="center",
+                fontsize=8, color=viz.MUTED, zorder=2)
+
+    return viz.save(fig, path)
+
+
+def _per_sop(corpus: Corpus, outdir: Path,
+             pair_rows: dict[str, list[dict]]) -> dict[str, dict]:
+    """One assessment per English SOP — translated or explicitly n/a."""
+    sops_dir = outdir / "sops"
+    sops_dir.mkdir(parents=True, exist_ok=True)
+
+    variants: dict[str, SOP] = {}
+    for s in sorted(corpus, key=lambda s: s.sop_id):
+        if s.language != "en" and s.parent_id and corpus.get(s.parent_id) is not None:
+            variants.setdefault(s.parent_id, s)
+
+    out: dict[str, dict] = {}
+    for en in sorted(corpus.english(), key=lambda s: s.sop_id):
+        es = variants.get(en.sop_id)
+        if es is None:
+            out[en.sop_id] = {
+                "summary": {
+                    "variant_id": None,
+                    "sections_en": len(en.sections),
+                    "sections_es": 0,
+                    "value_discrepancies": 0,
+                    "format_discrepancies": 0,
+                    "structure_discrepancies": 0,
+                },
+                "findings": ["No translated variant in the corpus — nothing to harmonize."],
+                "artifacts": [],
+                "table": [],
+                "status": "n/a",
+            }
+            continue
+
+        rows = pair_rows.get(en.sop_id, [])
+        by_cat = {c: sum(1 for r in rows if r["category"] == c) for c in CATEGORIES}
+        png = _plot_pair(en, es, rows, by_cat, sops_dir / f"{en.sop_id}.png")
+        findings = [_row_finding(r, en, es) for r in rows] or [
+            f"No discrepancies detected against {es.sop_id} — translation is harmonized."
+        ]
+        out[en.sop_id] = {
+            "summary": {
+                "variant_id": es.sop_id,
+                "sections_en": len(en.sections),
+                "sections_es": len(es.sections),
+                "value_discrepancies": by_cat["value"],
+                "format_discrepancies": by_cat["format"],
+                "structure_discrepancies": by_cat["structure"],
+            },
+            "findings": findings,
+            "artifacts": [str(Path(png).relative_to(PROJECT_ROOT))],
+            "table": rows,
+            "status": "fail" if rows else "pass",
+        }
+    return out
+
+
+# --------------------------------------------------------------------------- #
 # Entry point
 # --------------------------------------------------------------------------- #
 def run(corpus: Corpus, outdir: Path) -> dict:
@@ -255,6 +395,7 @@ def run(corpus: Corpus, outdir: Path) -> dict:
     table: list[dict] = []
     counts: dict[str, dict[str, int]] = {}
     pair_labels: list[str] = []
+    pair_rows: dict[str, list[dict]] = {}   # EN id -> that pair's discrepancy rows
     pairs_with_missing = 0
 
     for es in es_sops:
@@ -267,6 +408,7 @@ def run(corpus: Corpus, outdir: Path) -> dict:
         counts[label] = {c: 0 for c in CATEGORIES}
 
         rows, missing = _analyze_pair(en, es)
+        pair_rows[en.sop_id] = rows
         pairs_with_missing += int(missing)
         for r in rows:
             counts[label][r["category"]] += 1
@@ -297,6 +439,13 @@ def run(corpus: Corpus, outdir: Path) -> dict:
         f"present in the EN parent — re-translation required before use."
     )
 
+    per_sop = _per_sop(corpus, outdir, pair_rows)
+    n_na = sum(1 for v in per_sop.values() if v["status"] == "n/a")
+    findings.append(
+        f"{n_na} of {len(per_sop)} EN SOPs have no translated variant — each is "
+        f"reported as 'n/a' (checked, nothing to harmonize), never skipped."
+    )
+
     artifacts = [str(Path(p).relative_to(PROJECT_ROOT)) for p in (png, csv_path) if p]
 
     return {
@@ -312,4 +461,6 @@ def run(corpus: Corpus, outdir: Path) -> dict:
         "artifacts": artifacts,
         "table": table,
         "table_columns": ["pair", "category", "en_value", "es_value", "issue"],
+        "scope": "per_sop",
+        "per_sop": per_sop,
     }

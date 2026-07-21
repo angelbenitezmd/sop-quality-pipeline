@@ -91,6 +91,8 @@ def run(corpus: Corpus, outdir: Path) -> dict:
         "module": "m09_coverage",
         "title": "Coverage Gap Analysis",
         "slide": 23,
+        # Relational: one corpus view covers the set — no per-SOP assessment.
+        "scope": "corpus",
         "summary": {
             "topics_evaluated": len(rows),
             "english_sops": len(corpus.english()),

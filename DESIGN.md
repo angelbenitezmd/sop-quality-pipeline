@@ -43,11 +43,31 @@ Every module implements:
 ```python
 def run(corpus: Corpus, outdir: Path) -> dict
 # returns {"module": "mNN_name", "title": ..., "summary": {...}, "key_findings": [str, ...],
-#          "artifacts": [relative paths], "table": optional list-of-dicts}
+#          "artifacts": [relative paths], "table": optional list-of-dicts,
+#          "scope": "corpus" | "per_sop" | "both",
+#          "per_sop": {sop_id: {summary, findings, artifacts, table, status}}}
 ```
 
+## Scope: corpus-level vs per-document
+
+**Every SOP needs its own assessment** — a corpus average is not actionable when remediating
+one document. Capabilities split by whether the analysis describes the *set* or a *document*:
+
+| Scope | Modules | Rationale |
+|---|---|---|
+| `corpus` | m01 similarity, m02 topics, m04 dependencies, m08 minhash, m09 coverage | Inherently relational — one view covers the whole corpus |
+| `per_sop` | m03 readability, m06 rewriter, m07 scorecard, m10 visual aids, m11 style, m12 multilang, m13 training | Each describes a single document |
+| `both` | m05 regulatory audit | Each citation assessed individually, then rolled up per SOP and corpus-wide |
+
+Per-SOP entries must cover **every** applicable SOP; a document with nothing to assess gets
+`status: "n/a"` and an explanatory finding rather than being silently omitted. Per-SOP
+artifacts live in `output/mNN_*/sops/`. See `MODULE_CONTRACT.md` for the full contract.
+
 `cli.py` runs modules in order, saves `output/mNN/summary.json` per module, then renders
-`output/report/index.html` (self-contained dashboard, embeds PNGs base64, findings + tables).
+`output/report/index.html` (corpus dashboard) and, via `sop_report.py`, one dossier per SOP at
+`output/sops/<SOP-ID>.html` plus a worst-first index. Translated variants inherit their pair
+assessment from the English parent, since running English readability metrics over Spanish
+prose would be meaningless.
 
 ## Seeded defect matrix (what the pipeline must catch)
 

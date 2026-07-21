@@ -117,6 +117,15 @@ def _card(result: dict) -> str:
     title = _esc(result.get("title", result.get("module", "")))
     slide = result.get("slide", "")
     slide_badge = f'<span class="slide">deck&nbsp;slide&nbsp;{_esc(slide)}</span>' if slide else ""
+    # Show whether this capability also produces a per-document assessment.
+    scope = str(result.get("scope", "")).lower()
+    n_per_sop = len(result.get("per_sop") or {})
+    if scope in ("per_sop", "both") and n_per_sop:
+        label = "per-SOP + corpus" if scope == "both" else "per-SOP"
+        slide_badge = (f'<span class="slide scoped">{label} · {n_per_sop} assessed</span>'
+                       + slide_badge)
+    elif scope == "corpus":
+        slide_badge = '<span class="slide">corpus-wide</span>' + slide_badge
     err = result.get("_error")
     body = ""
     if err:
@@ -209,6 +218,10 @@ main{padding:30px 0 60px;display:grid;gap:22px}
 .card-head h2{margin:0;font-size:19px;font-weight:700;flex:1}
 .card-head .slide{font-size:11px;color:var(--muted);background:var(--bg);border:1px solid var(--line);
   padding:4px 9px;border-radius:20px;white-space:nowrap}
+.card-head .scoped{color:var(--secondary);border-color:var(--secondary);font-weight:600;margin-right:6px}
+.jump{display:inline-block;margin-top:18px;font-size:13px;font-weight:600;color:#fff;
+  border:1px solid rgba(255,255,255,.4);padding:8px 15px;border-radius:22px;text-decoration:none}
+.jump:hover{background:rgba(255,255,255,.14)}
 .card-body{padding:20px 22px}
 .chips{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px}
 .chip{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:9px 13px;min-width:90px}
@@ -254,6 +267,7 @@ footer{border-top:1px solid var(--line);padding:24px 0;color:var(--muted);font-s
     Every finding below is computed from the SOP text — similarity, readability, regulatory currency, dependencies,
     coverage, and quality scoring.</div>
   <div class="hstats">__STATS__</div>
+  <a class="jump" href="../sops/index.html">View per-SOP assessments &rarr;</a>
 </div></header>
 <nav class="toc"><div class="wrap">__NAV__</div></nav>
 <div class="wrap"><main>__CARDS__</main></div>

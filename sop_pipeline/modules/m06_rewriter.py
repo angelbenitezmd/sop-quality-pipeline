@@ -1,8 +1,12 @@
 """m06_rewriter — LLM-Assisted SOP Rewriting (deck slide 20).
 
-Picks the worst-quality complex SOP (a normalized blend of reading grade,
-ambiguous-term density and passive voice — deterministically SOP-CLN-007) and
-runs a RULE-BASED rewrite engine that:
+Rewrites EVERY English SOP with a RULE-BASED rewrite engine and reports
+before/after metrics per document (``per_sop``), on top of the corpus-level
+flagship view: the worst-quality complex SOP (a normalized blend of reading
+grade, ambiguous-term density and passive voice — deterministically
+SOP-CLN-007) still gets the headline chart and full before/after markdown.
+
+The rewrite engine:
 
   * splits run-on sentences at conjunctions / semicolons,
   * converts passive "shall/must be <verb>ed" into verb-first imperatives,
@@ -12,12 +16,15 @@ runs a RULE-BASED rewrite engine that:
 
 An Anthropic API call is offered as an optional path guarded by
 ``ANTHROPIC_API_KEY`` but the rule-based engine is what actually runs here
-(there is no key in this environment). Before/after readability, page-count,
-ambiguity and passive metrics are computed and charted.
+(there is no key in this environment). It is consulted ONCE, for the flagship
+rewrite only — never 40 times in a loop. Before/after readability, page-count,
+ambiguity and passive metrics are computed for every SOP and charted for the
+flagship.
 """
 
 from __future__ import annotations
 
+import csv
 import os
 import re
 import statistics
@@ -281,7 +288,13 @@ def _maybe_llm_rewrite(text: str) -> str | None:
 # Metrics
 # ---------------------------------------------------------------------------
 
+_EMPTY_METRICS = {"grade": 0.0, "pages": 0.0, "ambiguous": 0,
+                  "flagged_for_definition": 0, "passive": 0, "words": 0}
+
+
 def _metrics(text: str) -> dict:
+    if not text.strip():  # textstat is undefined on empty input
+        return dict(_EMPTY_METRICS)
     words = len(re.findall(r"[A-Za-z']+", text))
     # Terms already flagged for SME definition are tracked open items, not
     # unresolved ambiguity — exclude those spans from the ambiguity count.
@@ -312,6 +325,98 @@ def _pick_worst(corpus: Corpus):
     zg, za, zp = z([r[1] for r in rows]), z([r[2] for r in rows]), z([r[3] for r in rows])
     scored = sorted(zip(rows, (a + b + c for a, b, c in zip(zg, za, zp))), key=lambda x: -x[1])
     return scored[0][0][0]
+
+
+# ---------------------------------------------------------------------------
+# Per-SOP reporting
+# ---------------------------------------------------------------------------
+
+# One source of truth for the metric tables (flagship and per-SOP alike).
+METRIC_LABELS = [("Reading grade (FK)", "grade"), ("Estimated pages", "pages"),
+                 ("Ambiguous terms", "ambiguous"), ("Passive constructs", "passive")]
+
+# A rewrite is only credited as material at this many reading grades or better.
+MATERIAL_GRADE_DROP = 2.0
+# Plain-language target ceiling: at or below this the SOP already reads acceptably.
+GRADE_TARGET = 12.0
+
+
+def _metric_table(before: dict, after: dict) -> list[dict]:
+    return [{"metric": lab, "before": before[k], "after": after[k]} for lab, k in METRIC_LABELS]
+
+
+def _metric_table_md(table: list[dict]) -> str:
+    rows = "".join(
+        f"| {r['metric']} | {r['before']} | {r['after']} | "
+        f"{round(r['after'] - r['before'], 2):+} |\n" for r in table
+    )
+    return "| Metric | Before | After | Delta |\n| --- | ---: | ---: | ---: |\n" + rows
+
+
+def _status_for(before: dict, after: dict) -> str:
+    """pass = materially easier to read (or already at target); fail = no gain."""
+    drop = before["grade"] - after["grade"]
+    if drop >= MATERIAL_GRADE_DROP or before["grade"] <= GRADE_TARGET:
+        return "pass"
+    return "warn" if drop > 0 else "fail"
+
+
+def _write_rewrite_md(sop, before: dict, after: dict, original: str, rewritten: str,
+                      engine: str, path: Path) -> str:
+    path.write_text(
+        f"# SOP Rewrite — {sop.sop_id}\n\n"
+        f"**{sop.title}**  \nEngine: `{engine}`  \n\n"
+        + _metric_table_md(_metric_table(before, after)) +
+        f"\nOpen items for the SME: **{after['flagged_for_definition']}** `[DEFINE ...]` markers.\n"
+        "\n---\n\n## Original\n\n" + original.strip() +
+        f"\n\n---\n\n## Rewritten ({engine})\n\n" + rewritten.strip() + "\n",
+        encoding="utf-8",
+    )
+    return str(path.resolve().relative_to(PROJECT_ROOT))
+
+
+def _per_sop_entry(sop, before: dict, after: dict, rel_md: str, is_flagship: bool) -> dict:
+    """Assemble one document's assessment. Empty bodies are reported, not dropped."""
+    if before["words"] == 0 or after["words"] == 0:
+        return {
+            "summary": {"grade_before": before["grade"], "grade_after": after["grade"],
+                        "pages_before": before["pages"], "pages_after": after["pages"],
+                        "ambiguous_before": before["ambiguous"], "ambiguous_after": after["ambiguous"],
+                        "flagged_for_sme": after["flagged_for_definition"],
+                        "passive_before": before["passive"], "passive_after": after["passive"]},
+            "findings": [f"{sop.sop_id} has no rewritable prose body "
+                         f"({before['words']} words parsed) — nothing to rewrite or measure."],
+            "artifacts": [], "table": [], "status": "n/a",
+        }
+
+    drop = round(before["grade"] - after["grade"], 1)
+    verdict = ("cut the reading grade materially" if drop >= MATERIAL_GRADE_DROP else
+               "left the reading grade unchanged or worse" if drop <= 0 else
+               "cut the reading grade only slightly")
+    findings = [
+        f"Rule-based rewrite {verdict}: FK grade {before['grade']} -> {after['grade']} "
+        f"({-drop:+.1f}); estimated pages {before['pages']} -> {after['pages']}; "
+        f"passive constructs {before['passive']} -> {after['passive']}.",
+        f"{after['flagged_for_definition']} [DEFINE ...] open item(s) await an SME measurable "
+        f"criterion; unresolved ambiguous terms {before['ambiguous']} -> {after['ambiguous']}.",
+    ]
+    if before["grade"] <= GRADE_TARGET:
+        findings.append(f"Source already read at or below the Grade {GRADE_TARGET:.0f} target "
+                        f"({before['grade']}), so the rewrite is a polish, not a remediation.")
+    if is_flagship:
+        findings.append("Flagship SOP for this module — see rewrite_metrics.png and "
+                        "before_after.md for the charted corpus-level view.")
+    return {
+        "summary": {"grade_before": before["grade"], "grade_after": after["grade"],
+                    "pages_before": before["pages"], "pages_after": after["pages"],
+                    "ambiguous_before": before["ambiguous"], "ambiguous_after": after["ambiguous"],
+                    "flagged_for_sme": after["flagged_for_definition"],
+                    "passive_before": before["passive"], "passive_after": after["passive"]},
+        "findings": findings,
+        "artifacts": [rel_md],
+        "table": _metric_table(before, after),
+        "status": _status_for(before, after),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -353,9 +458,14 @@ def _chart(before: dict, after: dict, sop_id: str, path: Path) -> str:
 
 def run(corpus: Corpus, outdir: Path) -> dict:
     outdir = Path(outdir)
+    sopdir = outdir / "sops"
+    sopdir.mkdir(parents=True, exist_ok=True)
+    rel = lambda p: str(Path(p).resolve().relative_to(PROJECT_ROOT))
+
     sop = _pick_worst(corpus)
     original = sop.body
 
+    # Consulted ONCE, for the flagship only — never inside the 40-SOP loop.
     # Report the engine that actually produced the text, not merely whether a key
     # was present — a silent fallback must never be recorded as an LLM rewrite.
     llm_output = _maybe_llm_rewrite(original)
@@ -365,32 +475,53 @@ def run(corpus: Corpus, outdir: Path) -> dict:
         rewritten, engine = _rewrite_document(original), "rule-based"
 
     before, after = _metrics(original), _metrics(rewritten)
-
     png = _chart(before, after, sop.sop_id, outdir / "rewrite_metrics.png")
 
-    # One source of truth for both the markdown table and the returned table.
-    labels = [("Reading grade (FK)", "grade"), ("Estimated pages", "pages"),
-              ("Ambiguous terms", "ambiguous"), ("Passive constructs", "passive")]
-    table = [{"metric": lab, "before": before[k], "after": after[k]} for lab, k in labels]
-    rows = "".join(
-        f"| {r['metric']} | {r['before']} | {r['after']} | "
-        f"{round(r['after'] - r['before'], 2):+} |\n" for r in table
-    )
+    table = _metric_table(before, after)
     md = outdir / "before_after.md"
     md.write_text(
         f"# LLM-Assisted SOP Rewrite — {sop.sop_id}\n\n"
-        f"**{sop.title}**  \nEngine: `{engine}`  \n\n"
-        "| Metric | Before | After | Delta |\n| --- | ---: | ---: | ---: |\n" + rows +
+        f"**{sop.title}**  \nEngine: `{engine}`  \n\n" + _metric_table_md(table) +
         "\n---\n\n## Original\n\n" + original.strip() +
         f"\n\n---\n\n## Rewritten ({engine})\n\n" + rewritten.strip() + "\n",
         encoding="utf-8",
     )
 
-    rel = lambda p: str(Path(p).resolve().relative_to(PROJECT_ROOT))
+    # --- per-SOP sweep: every EN SOP, rule-based engine, stable id order --------
+    per_sop: dict[str, dict] = {}
+    csv_rows: list[dict] = []
+    for doc in sorted(corpus.english(), key=lambda s: s.sop_id):
+        src = doc.body
+        out_text = _rewrite_document(src)
+        b, a = _metrics(src), _metrics(out_text)
+        rel_md = _write_rewrite_md(doc, b, a, src, out_text, "rule-based",
+                                   sopdir / f"{doc.sop_id}.md")
+        entry = _per_sop_entry(doc, b, a, rel_md, doc.sop_id == sop.sop_id)
+        per_sop[doc.sop_id] = entry
+        csv_rows.append({"sop_id": doc.sop_id, "status": entry["status"],
+                         "grade_before": b["grade"], "grade_after": a["grade"],
+                         "pages_before": b["pages"], "pages_after": a["pages"],
+                         "ambiguous_before": b["ambiguous"], "ambiguous_after": a["ambiguous"],
+                         "passive_before": b["passive"], "passive_after": a["passive"],
+                         "flagged_for_sme": a["flagged_for_definition"]})
+
+    csv_path = outdir / "rewrite_all_sops.csv"
+    with csv_path.open("w", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=list(csv_rows[0].keys()))
+        w.writeheader()
+        w.writerows(csv_rows)
+
+    graded = [r for r in csv_rows if per_sop[r["sop_id"]]["status"] != "n/a"]
+    n_pass = sum(1 for r in csv_rows if per_sop[r["sop_id"]]["status"] == "pass")
+    mean_before = round(statistics.mean([r["grade_before"] for r in graded]), 1) if graded else 0.0
+    mean_after = round(statistics.mean([r["grade_after"] for r in graded]), 1) if graded else 0.0
+    total_flags = sum(r["flagged_for_sme"] for r in csv_rows)
+
     return {
         "module": "m06_rewriter",
         "title": "LLM-Assisted SOP Rewriting",
         "slide": 20,
+        "scope": "per_sop",
         "summary": {
             "sop_id": sop.sop_id,
             "grade_before": before["grade"],
@@ -400,6 +531,11 @@ def run(corpus: Corpus, outdir: Path) -> dict:
             "ambiguous_before": before["ambiguous"],
             "ambiguous_after": after["ambiguous"],
             "flagged_for_sme": after["flagged_for_definition"],
+            "sops_rewritten": len(per_sop),
+            "sops_passing": n_pass,
+            "corpus_grade_before": mean_before,
+            "corpus_grade_after": mean_after,
+            "open_define_items": total_flags,
         },
         "key_findings": [
             f"Worst-quality complex SOP selected: {sop.sop_id} "
@@ -411,11 +547,14 @@ def run(corpus: Corpus, outdir: Path) -> dict:
             "measurable criterion — flagged, not silently resolved.",
             f"Passive constructs {before['passive']} -> {after['passive']}; "
             f"estimated pages {before['pages']} -> {after['pages']}.",
+            f"All {len(per_sop)} EN SOPs rewritten: mean FK grade {mean_before} -> {mean_after}, "
+            f"{n_pass}/{len(per_sop)} pass, {total_flags} [DEFINE ...] open items raised corpus-wide.",
             f"Engine actually used: {engine}. The LLM path runs only when ANTHROPIC_API_KEY "
             "is set and the call succeeds; any failure falls back to rules and is reported "
             "as rule-based, never as an LLM rewrite.",
         ],
-        "artifacts": [rel(png), rel(md)],
+        "artifacts": [rel(png), rel(md), rel(csv_path)],
         "table": table,
         "table_columns": ["metric", "before", "after"],
+        "per_sop": per_sop,
     }

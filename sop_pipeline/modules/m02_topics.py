@@ -102,6 +102,8 @@ def run(corpus: Corpus, outdir: Path) -> dict:
         "module": "m02_topics",
         "title": "Topic Clustering (BERTopic-style)",
         "slide": 16,
+        # Relational: one corpus view covers the set — no per-SOP assessment.
+        "scope": "corpus",
         "summary": {
             "documents": n,
             "n_clusters": k,

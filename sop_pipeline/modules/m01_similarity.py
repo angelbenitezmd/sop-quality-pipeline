@@ -178,6 +178,8 @@ def run(corpus: Corpus, outdir: Path) -> dict:
         "module": "m01_similarity",
         "title": "SOP Similarity Analysis",
         "slide": 15,
+        # Relational: one corpus view covers the set — no per-SOP assessment.
+        "scope": "corpus",
         "summary": {
             "documents_analyzed": len(ids),
             "high_overlap_pairs": len(high),

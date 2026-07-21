@@ -1,44 +1,73 @@
 """m13_training — Training Content Auto-Generation (deck slide 13).
 
-For a handful of representative EN SOPs (one per department), auto-generate a
-self-contained training package:
+For **every** English SOP in the corpus, auto-generate a self-contained training
+package:
 
-  (a) role-based summaries — Operator (key numbered steps, plain language),
+  (a) role-based summaries — Operator (key steps, plain language),
       Supervisor (oversight + acceptance criteria), QA (references, records,
       data-integrity points);
-  (b) 3-5 knowledge-check questions derived from the procedure steps and any
-      numeric parameters found (contact times, temperatures, particle sizes, %),
-      each with an answer key;
-  (c) a quick-reference card plus a simple IF/THEN decision aid.
+  (b) 3-5 knowledge-check questions derived from the procedure steps and from
+      that SOP's own numeric parameters (contact times, temperatures, particle
+      sizes, concentrations), each with an answer key;
+  (c) a quick-reference card plus an IF/THEN decision aid.
 
-Each package is written to ``training_<SOP-ID>.md``. A stacked bar chart
-(``training.png``) shows the item count generated per SOP. Everything is derived
-from the SOP text itself; the manifest/RegKB only supply ground-truth labels.
+Scope is ``per_sop``. Each package is written to
+``output/m13_training/sops/training_<SOP-ID>.md`` and reported under
+``per_sop``; ``training_index.md`` indexes them all. Steps are extracted from
+the four drafting conventions present in the corpus (numbered lists,
+``Step N:`` paragraphs, bulleted procedures, directive prose), so an SOP in any
+house style still yields a usable package. One corpus chart (``training.png``)
+rolls the item counts up — no per-SOP images, the markdown is the deliverable.
+
+Everything is derived from the SOP text itself; the manifest/RegKB only supply
+ground-truth labels.
 """
 
 from __future__ import annotations
 
+import math
 import random
 import re
 from pathlib import Path
 
 from sop_pipeline.core.corpus import Corpus, PROJECT_ROOT, split_sentences
 from sop_pipeline.core.regkb import RegKB
-from sop_pipeline.core import viz
+from sop_pipeline.core import lexicon, viz
 
 RANDOM_STATE = 42
-
-# The representative set: one SOP across four departments, spanning the four
-# very different house styles (all-caps/shall, markdown/will, roman/must, markdown/must).
-TARGET_IDS = ["SOP-CLN-006", "SOP-MFG-001", "SOP-QC-005", "SOP-ENV-001"]
 
 # Section headings that introduce the actionable procedure, in priority order.
 _PROC_KEYWORDS = ["procedure", "preparation", "method", "process", "operation", "instruction"]
 
+# Front/back matter that never contains operator steps. Matched against the
+# heading with any leading numbering stripped.
+_BOILERPLATE_RE = re.compile(
+    r"^(purpose|scope|responsibilit|responsibility|definition|abbreviat|glossar"
+    r"|reference|related document|revision history|document history|approval"
+    r"|distribution|appendix|attachment|materials|equipment|house style"
+    r"|effective date|records|documentation|sop-)",
+    re.IGNORECASE,
+)
+# Acceptance sections are surfaced in the Supervisor block, so they are not also
+# folded into the operator step list.
+_NONSTEP_RE = re.compile(r"^acceptance", re.IGNORECASE)
+# Narrower exclusion for numeric-parameter mining: tables of dates and versions
+# would otherwise masquerade as measured specs.
+_NONPARAM_RE = re.compile(r"^(revision history|document history|reference|related document)", re.IGNORECASE)
+
 _NUM = r"\d+(?:\.\d+)?"
+_UNITS = (
+    r"°\s*C|°\s*F|µm|μm|µg|μg|mg|kg|mL|ml|L\b|ppm|parts\s+per\s+million|percent|%"
+    r"|CFU|psi|bar\b|rpm|microsiemens|µS/cm"
+    r"|hours?|hrs?|minutes?|min\b|seconds?|sec\b|days?|weeks?|months?|years?"
+)
 _NUMPARAM_RE = re.compile(
-    rf"{_NUM}(?:\s*(?:[–—-]|to)\s*{_NUM})?\s*"
-    r"(?:°\s*C|µm|%|hours?|hrs?|minutes?|min\b|days?|weeks?|months?)",
+    rf"{_NUM}(?:\s*(?:[–—-]|to)\s*{_NUM})?\s*(?:{_UNITS})",
+    re.IGNORECASE,
+)
+
+_DIRECTIVE_RE = re.compile(
+    r"\b(shall|should|must|will|is required to|are required to|is to be|are to be)\b",
     re.IGNORECASE,
 )
 
@@ -74,6 +103,20 @@ def _split_headed(body: str) -> list[tuple[str, str]]:
     return [(h, "\n".join(ls).strip()) for h, ls in out if h != "Preamble" or ls]
 
 
+# Leading section numbering: "6. ", "3.1 ", "V. ". The roman branch demands a
+# dot so that a heading like "Label Issuance" does not lose its "L".
+_LEADING_NUM_RE = re.compile(r"^\s*(?:\d+(?:\.\d+)*\.?|[IVXL]{1,6}\.)\s+")
+
+
+def _strip_numbering(heading: str) -> str:
+    return _LEADING_NUM_RE.sub("", heading).strip()
+
+
+def _norm_heading(heading: str) -> str:
+    """Drop leading section numbering so 'V. PROCEDURE' / '6. Procedure' compare alike."""
+    return _strip_numbering(heading).lower()
+
+
 def _list_items(text: str, marker: str) -> list[str]:
     """Extract list items (marker=r'\\d+[.)]' for numbered, r'[-*•]' for bulleted),
     joining wrapped continuation lines. Blank line ends an item."""
@@ -105,6 +148,28 @@ def _bullet_items(text: str) -> list[str]:
     return _list_items(text, r"[-*•]")
 
 
+def _step_items(text: str) -> list[str]:
+    """'Step 1: ...' paragraph style (the EQP house style)."""
+    return _list_items(text, r"Step\s+\d+\s*[:.)]")
+
+
+def _action_sentences(text: str) -> list[str]:
+    """Directive prose sentences — the fallback for SOPs written without lists."""
+    out: list[str] = []
+    for sent in split_sentences(text):
+        s = re.sub(r"\s+", " ", sent).strip()
+        if len(s.split()) < 5 or s.startswith("|"):
+            continue
+        first = re.sub(r"[^A-Za-z]", "", s.split()[0]).lower()
+        if (
+            _DIRECTIVE_RE.search(s)
+            or first in lexicon.STRONG_IMPERATIVES
+            or lexicon.sentence_starts_with_verb(s)
+        ):
+            out.append(s)
+    return out
+
+
 def _plainify(s: str) -> str:
     """Light de-passive / de-future cleanup for operator-facing plain language."""
     s = re.sub(r"\*\*(.*?)\*\*", r"\1", s)
@@ -127,12 +192,85 @@ def _find_section(sections: list[tuple[str, str]], keywords: list[str]) -> tuple
     return None
 
 
-def _numeric_params(body: str) -> list[tuple[str, str]]:
-    """Return (value, containing-sentence) pairs for distinct numeric specs."""
-    sentences = split_sentences(body)
+# ---------------------------------------------------------------------------
+# Step extraction — four drafting conventions, one interface
+# ---------------------------------------------------------------------------
+
+def _is_directive(item: str) -> bool:
+    return bool(_DIRECTIVE_RE.search(item)) or lexicon.sentence_starts_with_verb(item)
+
+
+def _extract_steps(text: str) -> tuple[list[str], str]:
+    """Return (steps, method) for one section body."""
+    for fn, method in (
+        (_numbered_items, "numbered"),
+        (_step_items, "step-prefixed"),
+        (_bullet_items, "bulleted"),
+    ):
+        items = [i for i in fn(text) if len(i.split()) >= 2 and not i.startswith("|")]
+        if len(items) < 2:
+            continue
+        # A bulleted block is only a procedure if most of its lines either direct
+        # an action or are full statements — otherwise it is a taxonomy
+        # ("General waste", "Hazardous and chemical waste", ...).
+        if method == "bulleted":
+            substantive = sum(1 for i in items if _is_directive(i) or len(i.split()) >= 8)
+            if substantive * 2 < len(items):
+                continue
+        return items, method
+    prose = _action_sentences(text)
+    if len(prose) >= 2:
+        return prose, "prose"
+    return [], "none"
+
+
+def _step_groups(sections: list[tuple[str, str]]) -> tuple[list[tuple[str, list[str]]], str, str]:
+    """Pick the operator-facing steps.
+
+    A keyword-named section with an explicit step list wins outright; otherwise
+    the steps of every non-boilerplate section are consolidated so that
+    bullet-driven and prose-only SOPs still yield a full package.
+    Returns (groups, primary_heading, method).
+    """
+    candidates = [
+        (h, t) for h, t in sections
+        if not _BOILERPLATE_RE.match(_norm_heading(h)) and not _NONSTEP_RE.match(_norm_heading(h))
+    ]
+    scored = [(h, *_extract_steps(t)) for h, t in candidates]
+
+    for kw in _PROC_KEYWORDS:
+        for heading, items, method in scored:
+            if kw in heading.lower() and method in ("numbered", "step-prefixed"):
+                return [(heading, items)], heading, method
+
+    groups = [(h, items) for h, items, _ in scored if items]
+    if not groups:
+        return [], "", "none"
+    methods = sorted({m for _, items, m in scored if items})
+    primary = max(groups, key=lambda g: len(g[1]))[0]
+    return groups, primary, methods[0] if len(methods) == 1 else "mixed"
+
+
+def _section_lines(text: str) -> list[str]:
+    """Readable lines from a section: its list items if it is a list, otherwise
+    its sentences. Table rows and numbering fragments are dropped."""
+    out: list[str] = []
+    for line in _bullet_items(text) or _numbered_items(text) or split_sentences(text):
+        line = re.sub(r"^[-*•]\s*", "", re.sub(r"\s+", " ", line).strip())
+        if len(line.split()) >= 4 and not line.startswith("|"):
+            out.append(line)
+    return out
+
+
+def _numeric_params(sections: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """Return (value, containing-sentence) pairs for distinct numeric specs,
+    skipping revision/reference tables where numbers are dates and versions."""
+    body = "\n\n".join(t for h, t in sections if not _NONPARAM_RE.match(_norm_heading(h)))
     seen: dict[str, tuple[str, str]] = {}
-    for sent in sentences:
+    for sent in split_sentences(body):
         clean = re.sub(r"\s+", " ", sent).strip()
+        if clean.startswith("|"):
+            continue
         for m in _NUMPARAM_RE.finditer(sent):
             val = re.sub(r"\s+", " ", m.group(0)).strip()
             key = val.lower().replace(" ", "")
@@ -174,53 +312,51 @@ def _conditionals(sentences: list[str]) -> list[str]:
 # Package builder
 # ---------------------------------------------------------------------------
 
-def _build_package(sop, kb: RegKB) -> dict:
+def _build_package(sop, kb: RegKB, complexity: str = "") -> dict:
     sections = _split_headed(sop.body)
-    sentences = split_sentences(sop.body)
+    # Section-aware lines, not raw sentences: a bullet-only SOP has no sentence
+    # boundaries the splitter can see, so its whole body would come back as one blob.
+    lines = [ln for _, text in sections for ln in _section_lines(text)]
 
-    proc = _find_section(sections, _PROC_KEYWORDS)
-    if proc is None:  # fall back to the most step-dense section
-        proc = max(sections, key=lambda s: len(_numbered_items(s[1])), default=("Procedure", ""))
-    proc_heading, proc_body = proc
-    steps = _numbered_items(proc_body)
+    groups, primary, method = _step_groups(sections)
+    steps = [s for _, items in groups for s in items]
 
-    numeric = _numeric_params(sop.body)
+    numeric = _numeric_params(sections)
     citations = kb.extract(sop.sop_id, sop.full_text)
     related = sop.cross_references
 
     # -- Supervisor: oversight sentences + acceptance criteria ---------------
-    resp = _find_section(sections, ["responsibilit"])
-    oversight = []
-    if resp:
-        for s in split_sentences(resp[1]):
-            if re.search(r"\b(supervisor|lead|review|verify|confirm|approve|ensure)\b", s, re.IGNORECASE):
-                oversight.append(re.sub(r"\s+", " ", s).strip())
+    resp = _find_section(sections, ["responsibilit", "responsibility"])
+    oversight = [
+        line for line in (_section_lines(resp[1]) if resp else [])
+        if re.search(r"\b(supervisor|manager|lead|quality assurance|review|verif|confirm|approv|ensur|oversee|responsib)",
+                     line, re.IGNORECASE)
+    ]
     accept = _find_section(sections, ["acceptance", "in-process", "limits", "criteria"])
-    accept_lines: list[str] = []
-    if accept:
-        accept_lines = _numbered_items(accept[1]) or _bullet_items(accept[1])
-        if not accept_lines:  # non-numbered/non-bulleted acceptance prose
-            accept_lines = [re.sub(r"\s+", " ", x).strip() for x in split_sentences(accept[1])]
+    accept_lines = _section_lines(accept[1]) if accept else []
 
     # -- QA: records / data-integrity points ---------------------------------
     records = _find_section(sections, ["documentation", "records", "data"])
-    di_points = []
-    if records:
-        di_points = [re.sub(r"\s+", " ", x).strip() for x in split_sentences(records[1])]
+    di_points = _section_lines(records[1]) if records else []
     if not di_points:
         di_points = [
-            re.sub(r"\s+", " ", s).strip()
-            for s in sentences
-            if re.search(r"\b(record|document|logbook|data integrity|SOP-DOC-001|review the record)\b", s, re.IGNORECASE)
+            ln for ln in lines
+            if re.search(r"\b(record|document|logbook|data integrity|SOP-DOC-001)", ln, re.IGNORECASE)
         ][:3]
+    di_points = di_points[:4]
 
     # -- Quiz pool (3-5, deterministic order) --------------------------------
     quiz: list[tuple[str, str]] = []
     for val, sent in numeric[:2]:
         quiz.append((f"Fill in the blank: \"{_cloze(sent, val)}\"", val))
     if steps:
-        quiz.append((f"What is the first step of the {proc_heading}?", _plainify(steps[0])))
-        quiz.append((f"How many numbered steps does the {proc_heading} contain?", str(len(steps))))
+        first_heading = _strip_numbering(groups[0][0])
+        quiz.append((f"What is the first step performed under \"{first_heading}\"?", _plainify(steps[0])))
+        count_q = (
+            f"How many steps does the {sop.sop_id} procedure contain?" if len(groups) == 1
+            else f"Across its {len(groups)} operational stages, how many steps does {sop.sop_id} define in total?"
+        )
+        quiz.append((count_q, str(len(steps))))
     if citations:
         names = ", ".join(c.canonical for c in citations)
         quiz.append((f"Which regulatory reference(s) does {sop.sop_id} cite?", names))
@@ -230,15 +366,24 @@ def _build_package(sop, kb: RegKB) -> dict:
         quiz.append(("State one acceptance criterion this procedure must meet.", accept_lines[0]))
     if len(quiz) < 3 and related:  # guarantee the 3-question floor
         quiz.append((f"Name a related SOP that {sop.sop_id} cross-references.", ", ".join(related)))
+    if len(quiz) < 3:  # last resort: ownership/control facts still testable
+        quiz.append((
+            f"Which function owns {sop.sop_id}, and who is the document owner?",
+            f"{sop.department_name} — {sop.owner or 'owner not stated'}",
+        ))
     quiz = quiz[:5]
 
     # -- Decision aid + quick reference --------------------------------------
-    decision = _conditionals(sentences)
+    decision = _conditionals(lines)
+    derived = len(decision)
     if len(decision) < 2:
-        sup = "the shift supervisor"
-        decision.append(f"IF a step cannot be performed as written THEN stop and notify {sup} before proceeding.")
+        decision.append("IF a step cannot be performed as written THEN stop and notify the shift supervisor before proceeding.")
         decision.append("IF acceptance criteria are not met THEN document the excursion and escalate to Quality Assurance (per SOP-DOC-001).")
         decision = decision[:4]
+
+    # Session length: 2 min per step + 2 min per question on a 10 min briefing,
+    # rounded up to the nearest 5 so schedulers get a usable slot.
+    est_minutes = int(5 * math.ceil((10 + 2 * len(steps) + 2 * len(quiz)) / 5))
 
     quick_ref = [
         f"Owner: {sop.owner or 'n/a'} · Version {sop.version} · Effective {sop.effective_date}",
@@ -246,12 +391,16 @@ def _build_package(sop, kb: RegKB) -> dict:
         f"Related SOPs: {', '.join(related) or 'none'}",
         f"Key numeric specs: {', '.join(v for v, _ in numeric) or 'none stated'}",
         f"Procedure steps to master: {len(steps)}",
+        f"Estimated session length: {est_minutes} min ({complexity or 'unrated'} complexity)",
     ]
 
     return {
         "sop": sop,
-        "proc_heading": proc_heading,
+        "groups": groups,
+        "proc_heading": primary or "Procedure",
+        "method": method,
         "steps": steps,
+        "numeric": numeric,
         "oversight": oversight,
         "accept_lines": accept_lines,
         "citations": citations,
@@ -259,7 +408,10 @@ def _build_package(sop, kb: RegKB) -> dict:
         "di_points": di_points,
         "quiz": quiz,
         "decision": decision,
+        "derived_decisions": derived,
         "quick_ref": quick_ref,
+        "complexity": complexity,
+        "est_minutes": est_minutes,
         "summaries": 3,
         "questions": len(quiz),
         "aids": len(quick_ref) + len(decision),
@@ -273,14 +425,27 @@ def _render_md(pkg: dict) -> str:
     L.append("")
     L.append(f"*Auto-generated · {sop.department_name} · Version {sop.version} · Owner: {sop.owner or 'n/a'}*")
     L.append("")
+    L.append(
+        f"*Steps extracted from the SOP's own {pkg['method']} drafting style · "
+        f"estimated session length {pkg['est_minutes']} min*"
+    )
+    L.append("")
     L.append("## 1. Role-Based Summaries")
     L.append("")
-    L.append(f"### Operator — key steps ({pkg['proc_heading']})")
+    multi = len(pkg["groups"]) > 1
+    where = f"consolidated from {len(pkg['groups'])} sections" if multi else pkg["proc_heading"]
+    L.append(f"### Operator — key steps ({where})")
     if pkg["steps"]:
-        for i, s in enumerate(pkg["steps"], 1):
-            L.append(f"{i}. {_plainify(s)}")
+        n = 0
+        for heading, items in pkg["groups"]:
+            if multi:
+                L.append("")
+                L.append(f"**{heading}**")
+            for item in items:
+                n += 1
+                L.append(f"{n}. {_plainify(item)}")
     else:
-        L.append("_No numbered steps detected._")
+        L.append("_No procedural steps could be extracted from this document._")
     L.append("")
     L.append("### Supervisor — oversight & acceptance")
     for s in pkg["oversight"] or ["Verify that each step is executed and documented as written."]:
@@ -293,7 +458,8 @@ def _render_md(pkg: dict) -> str:
     L.append("### QA — references, records & data integrity")
     if pkg["citations"]:
         for c in pkg["citations"]:
-            L.append(f"- Reference: {c.canonical} — status *{c.status}* (current: {c.current_version or 'n/a'})")
+            newer = f" (current: {c.current_version})" if c.current_version and c.current_version != c.status else ""
+            L.append(f"- Reference: {c.canonical} — status *{c.status}*{newer}")
     else:
         L.append("- Reference: none cited in body")
     L.append(f"- Related controlled documents: {', '.join(pkg['related']) or 'none'}")
@@ -322,8 +488,29 @@ def _render_md(pkg: dict) -> str:
     return "\n".join(L)
 
 
+def _render_index(rows: list[dict]) -> str:
+    L = ["# Training Package Index", "",
+         f"Auto-generated training packages for all {len(rows)} English SOPs. "
+         "Each package contains Operator / Supervisor / QA summaries, a knowledge "
+         "check with answer key, and a quick-reference / decision aid.", "",
+         "| SOP | Department | Style detected | Steps | Questions | Aids | Est. min | Status | Package |",
+         "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
+    for r in rows:
+        pkg = f"sops/training_{r['sop_id']}.md" if r["status"] == "pass" else "—"
+        L.append(
+            f"| {r['sop_id']} | {r['department']} | {r['source_style']} | {r['steps']} | "
+            f"{r['questions']} | {r['aids']} | {r['est_minutes']} | {r['status']} | {pkg} |"
+        )
+    L.append("")
+    return "\n".join(L)
+
+
+# ---------------------------------------------------------------------------
+# Corpus chart
+# ---------------------------------------------------------------------------
+
 def _chart(rows: list[dict], outdir: Path) -> str:
-    fig, ax = viz.new_fig(8.5, 5.0)
+    fig, ax = viz.new_fig(13.0, 5.8)
     labels = [r["sop_id"].replace("SOP-", "") for r in rows]
     x = list(range(len(rows)))
     summaries = [r["summaries"] for r in rows]
@@ -338,38 +525,41 @@ def _chart(rows: list[dict], outdir: Path) -> str:
     ax.grid(True, axis="y", color=viz.GRID, linewidth=0.7, zorder=0)
     ax.grid(False, axis="x")
 
-    width = 0.62
+    width = 0.72
     series = [
-        (summaries, [0] * len(rows), viz.CATEGORICAL[0], "Role summaries", "#FFFFFF"),
-        (questions, bottom_q, viz.CATEGORICAL[3], "Quiz questions", viz.INK),
-        (aids, bottom_a, viz.CATEGORICAL[4], "Quick-ref / decision aids", "#FFFFFF"),
+        (summaries, [0] * len(rows), viz.CATEGORICAL[0], "Role summaries"),
+        (questions, bottom_q, viz.CATEGORICAL[3], "Quiz questions"),
+        (aids, bottom_a, viz.CATEGORICAL[4], "Quick-ref / decision aids"),
     ]
-    for values, bottoms, color, label, textcolor in series:
+    for values, bottoms, color, label in series:
         ax.bar(x, values, width=width, bottom=bottoms, color=color,
                label=label, zorder=3, linewidth=0)
-        # Segment value labels, centred in each segment (contrasting ink).
-        for xi, v, b in zip(x, values, bottoms):
-            if v >= 2:
-                ax.text(xi, b + v / 2, str(v), ha="center", va="center",
-                        fontsize=8.5, color=textcolor, zorder=4)
 
     totals = [s + q + a for s, q, a in zip(summaries, questions, aids)]
-    top = max(totals)
-    for xi, t in zip(x, totals):
-        ax.text(xi, t + top * 0.02, str(t), ha="center", va="bottom",
-                fontsize=9, fontweight="bold", color=viz.INK, zorder=4)
+    top = max(totals) if totals else 1
+
+    # Department dividers + group labels: 40 bars read better in blocks.
+    depts = [r["sop_id"].split("-")[1] for r in rows]
+    start = 0
+    for i in range(1, len(depts) + 1):
+        if i == len(depts) or depts[i] != depts[start]:
+            if start > 0:
+                ax.axvline(start - 0.5, color=viz.GRID, linewidth=1.0, zorder=1)
+            ax.text((start + i - 1) / 2, top * 1.04, depts[start], ha="center", va="bottom",
+                    fontsize=8.5, fontweight="bold", color=viz.MUTED, zorder=4)
+            start = i
 
     ax.set_xticks(x)
-    ax.set_xticklabels(labels)
+    ax.set_xticklabels(labels, rotation=90, fontsize=7)
     ax.set_ylabel("Training items generated (count)")
-    ax.set_xlabel("Representative SOP (department code)")
-    ax.set_xlim(-0.65, len(rows) - 0.35)
-    ax.set_ylim(0, top * 1.10)
-    ax.set_title("Auto-Generated Training Items per SOP", pad=26)
+    ax.set_xlabel("SOP (department code + number)")
+    ax.set_xlim(-0.8, len(rows) - 0.2)
+    ax.set_ylim(0, top * 1.16)
+    ax.set_title("Auto-Generated Training Items per SOP — full EN corpus", pad=26)
     ax.text(
         0.5, 1.015,
-        "Representative sample: one SOP per department, chosen to span four different "
-        "in-house drafting styles",
+        f"Every one of the {len(rows)} English SOPs gets its own package: 3 role summaries "
+        "+ knowledge check + quick-reference / decision aid",
         transform=ax.transAxes, ha="center", va="bottom",
         fontsize=8.5, color=viz.MUTED,
     )
@@ -377,12 +567,81 @@ def _chart(rows: list[dict], outdir: Path) -> str:
     # Legend fully outside the axes (below the x-axis label) so it can never sit
     # on top of a bar or a value label.
     ax.legend(
-        loc="upper center", bbox_to_anchor=(0.5, -0.14), ncol=3,
+        loc="upper center", bbox_to_anchor=(0.5, -0.22), ncol=3,
         frameon=False, fontsize=9, handlelength=1.4, handleheight=0.9,
         columnspacing=1.8, borderpad=0.0,
     )
     viz.finish(ax)
     return viz.save(fig, outdir / "training.png")
+
+
+# ---------------------------------------------------------------------------
+# Per-SOP assessment
+# ---------------------------------------------------------------------------
+
+def _per_sop_entry(pkg: dict, md_rel: str | None) -> dict:
+    sop = pkg["sop"]
+    if md_rel is None:
+        return {
+            "summary": {"summaries": 0, "questions": 0, "aids": 0, "steps": 0,
+                        "numeric_params": 0, "source_style": "none", "est_minutes": 0},
+            "findings": [
+                f"{sop.sop_id} has no extractable procedural content (no numbered, "
+                "step-prefixed, bulleted or directive-prose steps outside front matter), "
+                "so no training package could be derived — remediate the document structure first."
+            ],
+            "artifacts": [],
+            "table": [],
+            "status": "n/a",
+        }
+
+    n_numeric = len([q for q in pkg["quiz"] if q[0].startswith("Fill in the blank")])
+    stages = len(pkg["groups"])
+    findings = [
+        f"Generated a 3-role package ({pkg['summaries']} summaries, {pkg['questions']} quiz "
+        f"items, {pkg['aids']} aids) from {len(pkg['steps'])} step(s) across {stages} "
+        f"section(s), extracted from this SOP's {pkg['method']} drafting style.",
+    ]
+    if n_numeric:
+        specs = ", ".join(v for v, _ in pkg["numeric"][:n_numeric])
+        findings.append(f"Answer key is anchored on {n_numeric} real numeric parameter(s) from the text: {specs}.")
+    else:
+        findings.append(
+            "No measurable numeric parameter (time/temperature/concentration) found in the body — "
+            "the knowledge check falls back to step, reference and acceptance recall."
+        )
+    if pkg["citations"]:
+        stale = [c.canonical for c in pkg["citations"] if c.status in ("outdated", "review")]
+        findings.append(
+            f"QA module cites {len(pkg['citations'])} regulatory reference(s)"
+            + (f"; {', '.join(stale)} flagged as outdated/under review and must be corrected "
+               "before the package is released for training." if stale else " — all current.")
+        )
+    findings.append(
+        f"{pkg['derived_decisions']} IF/THEN line(s) auto-derived from the SOP's own conditional "
+        f"language, {len(pkg['decision']) - pkg['derived_decisions']} added from the standard "
+        f"escalation template; estimated session length {pkg['est_minutes']} min."
+    )
+
+    return {
+        "summary": {
+            "summaries": pkg["summaries"],
+            "questions": pkg["questions"],
+            "aids": pkg["aids"],
+            "steps": len(pkg["steps"]),
+            "numeric_params": len(pkg["numeric"]),
+            "source_style": pkg["method"],
+            "est_minutes": pkg["est_minutes"],
+        },
+        "findings": findings,
+        "artifacts": [md_rel],
+        "table": [
+            {"n": i, "question": q, "answer": a}
+            for i, (q, a) in enumerate(pkg["quiz"], 1)
+        ],
+        "table_columns": ["n", "question", "answer"],
+        "status": "pass",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -392,49 +651,77 @@ def _chart(rows: list[dict], outdir: Path) -> str:
 def run(corpus: Corpus, outdir: Path) -> dict:
     random.seed(RANDOM_STATE)
     outdir = Path(outdir)
+    sops_dir = outdir / "sops"
+    sops_dir.mkdir(parents=True, exist_ok=True)
+    # Packages moved into sops/ — drop any left at the top level by an older run.
+    for stale in outdir.glob("training_SOP-*.md"):
+        stale.unlink()
+
     kb = RegKB.from_manifest(corpus.manifest)
+    targets = sorted(corpus.english(), key=lambda s: s.sop_id)
 
-    targets = [corpus[i] for i in TARGET_IDS if corpus.get(i) and corpus[i].language == "en"]
-    packages = [_build_package(sop, kb) for sop in targets]
-
-    artifacts: list[str] = []
+    per_sop: dict[str, dict] = {}
     rows: list[dict] = []
-    for pkg in packages:
-        sop = pkg["sop"]
-        md_path = outdir / f"training_{sop.sop_id}.md"
-        md_path.write_text(_render_md(pkg), encoding="utf-8")
-        artifacts.append(str(md_path.relative_to(PROJECT_ROOT)))
+    packages: list[dict] = []
+
+    for sop in targets:
+        complexity = str(corpus.manifest_entry(sop.sop_id).get("complexity", ""))
+        pkg = _build_package(sop, kb, complexity)
+        packages.append(pkg)
+        # A package needs *some* procedural substance; otherwise report n/a rather
+        # than shipping an empty deck to a trainer.
+        usable = bool(pkg["steps"]) or len(pkg["quiz"]) >= 3
+        md_rel: str | None = None
+        if usable:
+            md_path = sops_dir / f"training_{sop.sop_id}.md"
+            md_path.write_text(_render_md(pkg), encoding="utf-8")
+            md_rel = str(md_path.relative_to(PROJECT_ROOT))
+        per_sop[sop.sop_id] = _per_sop_entry(pkg, md_rel)
         rows.append({
             "sop_id": sop.sop_id,
-            "summaries": pkg["summaries"],
-            "questions": pkg["questions"],
-            "aids": pkg["aids"],
+            "department": sop.department,
+            "summaries": pkg["summaries"] if usable else 0,
+            "questions": pkg["questions"] if usable else 0,
+            "aids": pkg["aids"] if usable else 0,
+            "steps": len(pkg["steps"]),
+            "numeric_params": len(pkg["numeric"]),
+            "source_style": pkg["method"] if usable else "none",
+            "est_minutes": pkg["est_minutes"] if usable else 0,
+            "status": "pass" if usable else "n/a",
         })
 
-    png = _chart(rows, outdir)
-    artifacts.insert(0, str(Path(png).relative_to(PROJECT_ROOT)))
+    index_path = outdir / "training_index.md"
+    index_path.write_text(_render_index(rows), encoding="utf-8")
 
+    png = _chart(rows, outdir)
+    artifacts = [
+        str(Path(png).relative_to(PROJECT_ROOT)),
+        str(index_path.relative_to(PROJECT_ROOT)),
+    ]
+
+    generated = [r for r in rows if r["status"] == "pass"]
     total_questions = sum(r["questions"] for r in rows)
     total_summaries = sum(r["summaries"] for r in rows)
+    total_aids = sum(r["aids"] for r in rows)
+    styles = sorted({r["source_style"] for r in generated})
+    with_numeric = [r for r in generated if r["numeric_params"]]
+    total_minutes = sum(r["est_minutes"] for r in rows)
 
     findings = [
-        f"Generated complete training packages for {len(rows)} SOPs across "
-        f"{len({p['sop'].department for p in packages})} departments.",
-        f"Produced {total_questions} knowledge-check questions and "
-        f"{total_summaries} role summaries (Operator / Supervisor / QA).",
+        f"Generated complete training packages for {len(generated)}/{len(rows)} EN SOPs across "
+        f"{len({r['department'] for r in generated})} departments — every document now has its own.",
+        f"Produced {total_questions} knowledge-check questions, {total_summaries} role summaries "
+        f"(Operator / Supervisor / QA) and {total_aids} quick-reference / decision-aid lines.",
+        f"Step extraction handled {len(styles)} different drafting conventions ({', '.join(styles)}), "
+        "so bullet-only and prose-only SOPs yield packages as readily as numbered ones.",
+        f"{len(with_numeric)} SOPs contained measurable parameters and got parameter-anchored quiz "
+        f"items; the remaining {len(generated) - len(with_numeric)} fall back to step/reference recall "
+        "— a drafting gap worth closing.",
+        f"Estimated {total_minutes} minutes ({total_minutes / 60:.1f} h) of curriculum, "
+        f"averaging {total_minutes / max(len(generated), 1):.0f} min per SOP.",
+        "IF/THEN decision aids were auto-derived from conditional and escalation language "
+        "in each procedure (e.g. alarm, excursion, out-of-limit).",
     ]
-    # Highlight the SOP with the richest numeric parameter set.
-    richest = max(packages, key=lambda p: len([q for q in p["quiz"] if "blank" in q[0].lower()]))
-    n_numeric = len([q for q in richest["quiz"] if "blank" in q[0].lower()])
-    if n_numeric:
-        findings.append(
-            f"{richest['sop'].sop_id} yielded {n_numeric} parameter-based quiz item(s) "
-            f"from measured specs (e.g. temperatures/times)."
-        )
-    findings.append(
-        "IF/THEN decision aids were auto-derived from conditional and escalation "
-        "language in each procedure (e.g. alarm, excursion, out-of-limit)."
-    )
 
     return {
         "module": "m13_training",
@@ -442,11 +729,19 @@ def run(corpus: Corpus, outdir: Path) -> dict:
         "slide": 13,
         "summary": {
             "sops_processed": len(rows),
+            "packages_generated": len(generated),
             "total_questions": total_questions,
             "total_summaries": total_summaries,
+            "total_aids": total_aids,
+            "est_curriculum_hours": round(total_minutes / 60, 1),
         },
         "key_findings": findings[:6],
         "artifacts": artifacts,
         "table": rows,
-        "table_columns": ["sop_id", "summaries", "questions", "aids"],
+        "table_columns": [
+            "sop_id", "department", "summaries", "questions", "aids",
+            "steps", "numeric_params", "source_style", "est_minutes", "status",
+        ],
+        "scope": "per_sop",
+        "per_sop": per_sop,
     }

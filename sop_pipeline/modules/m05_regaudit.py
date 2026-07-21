@@ -5,6 +5,10 @@ USP, ISO, PDA, GAMP, ISPE) using the shared RegKB, classifies each against the
 manifest's ground-truth ``regulatory_current_versions`` table, and renders the
 deck's audit table: SOP | Reference Found | Status | Current Version | Action.
 
+Scope is ``both``: each citation is classified individually, rolled up into a
+per-SOP scorecard (``per_sop``, one entry for every EN SOP plus its own
+``sops/<id>.csv`` extract), and then rolled up corpus-wide for the deck chart.
+
 Fully deterministic: no randomness, stable severity-then-id ordering (the
 ``random_state=42`` requirement is satisfied vacuously — nothing here samples).
 """
@@ -17,7 +21,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-from sop_pipeline.core.corpus import Corpus, PROJECT_ROOT
+from sop_pipeline.core.corpus import SOP, Corpus, PROJECT_ROOT
 from sop_pipeline.core.regkb import RegKB
 from sop_pipeline.core import viz
 
@@ -38,6 +42,7 @@ def _collect(corpus: Corpus) -> list[dict]:
                 # which carries the (outdated) version designation for problems.
                 "reference": cite.as_written or cite.canonical,
                 "canonical": cite.canonical,
+                "as_written": cite.as_written or cite.canonical,
                 "status": cite.status,
                 "current_version": cite.current_version or "current",
                 "action": cite.action or "None",
@@ -122,6 +127,106 @@ def _write_csv(rows: list[dict], outdir: Path) -> str:
     return str(path)
 
 
+# ---------------------------------------------------------------------------
+# Per-SOP layer: one scorecard per document, rolled up from its own citations.
+# ---------------------------------------------------------------------------
+
+_PER_SOP_COLUMNS = ["reference", "as_written", "status", "current_version", "action"]
+
+
+def _sop_table(rows: list[dict]) -> list[dict]:
+    """Audit rows scoped to one SOP (sop_id is implied by the per_sop key)."""
+    return [
+        {"reference": r["canonical"], "as_written": r["as_written"], "status": r["status"],
+         "current_version": r["current_version"], "action": r["action"]}
+        for r in rows
+    ]
+
+
+def _write_sop_csv(sop_id: str, table: list[dict], outdir: Path) -> str:
+    """One citation extract per SOP so a doc owner can be handed just their rows."""
+    path = outdir / "sops" / f"{sop_id}.csv"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=_PER_SOP_COLUMNS, extrasaction="ignore")
+        w.writeheader()
+        w.writerows(table)
+    # Artifact paths are project-root-relative; resolve() so a relative outdir works too.
+    resolved = path.resolve()
+    return str(resolved.relative_to(PROJECT_ROOT)) if resolved.is_relative_to(PROJECT_ROOT) else str(resolved)
+
+
+def _sop_findings(sop: SOP, rows: list[dict], counts: Counter) -> list[str]:
+    """Name every problem citation and the update it requires."""
+    if not rows:
+        return [
+            f"No regulatory references detected in {sop.sop_id} ({sop.title}) — "
+            "nothing to audit; re-check if the procedure later cites a standard."
+        ]
+    findings = [
+        f"Outdated citation \"{r['as_written']}\" — update to {r['current_version']}."
+        for r in rows if r["status"] == "outdated"
+    ]
+    findings += [
+        f"Citation \"{r['as_written']}\" flagged for review — {r['action']}."
+        for r in rows if r["status"] == "review"
+    ]
+    findings += [
+        f"Unrecognised citation \"{r['as_written']}\" — not in the regulatory register; verify manually."
+        for r in rows if r["status"] == "unknown"
+    ]
+    if findings:
+        findings.append(
+            f"{counts.get('current', 0)} of {len(rows)} citations in {sop.sop_id} are current; "
+            f"{len(findings)} {'requires' if len(findings) == 1 else 'require'} action."
+        )
+    else:
+        refs = ", ".join(r["canonical"] for r in rows)
+        plural = "citation is" if len(rows) == 1 else "citations are"
+        findings.append(
+            f"All {len(rows)} regulatory {plural} current ({refs}) — no update required."
+        )
+    return findings
+
+
+def _per_sop(corpus: Corpus, rows: list[dict], outdir: Path) -> dict[str, dict]:
+    """Build one assessment entry for every EN SOP — never silently omit one."""
+    by_sop: dict[str, list[dict]] = {}
+    for r in rows:  # rows are already severity-then-id-then-canonical sorted
+        by_sop.setdefault(r["sop_id"], []).append(r)
+
+    out: dict[str, dict] = {}
+    for sop in sorted(corpus.english(), key=lambda s: s.sop_id):
+        sop_rows = by_sop.get(sop.sop_id, [])
+        counts = Counter(r["status"] for r in sop_rows)
+        table = _sop_table(sop_rows)
+
+        if not sop_rows:
+            status = "n/a"
+        elif counts.get("outdated"):
+            status = "fail"
+        elif counts.get("review") or counts.get("unknown"):
+            status = "warn"
+        else:
+            status = "pass"
+
+        out[sop.sop_id] = {
+            "summary": {
+                "citations_found": len(sop_rows),
+                "current": counts.get("current", 0),
+                "outdated": counts.get("outdated", 0),
+                "review": counts.get("review", 0),
+                "unknown": counts.get("unknown", 0),
+            },
+            "findings": _sop_findings(sop, sop_rows, counts),
+            "artifacts": [_write_sop_csv(sop.sop_id, table, outdir)],
+            "table": table,
+            "table_columns": list(_PER_SOP_COLUMNS),
+            "status": status,
+        }
+    return out
+
+
 def run(corpus: Corpus, outdir: Path) -> dict:
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
@@ -132,6 +237,8 @@ def run(corpus: Corpus, outdir: Path) -> dict:
 
     png = _plot(rows, counts, outdir)
     csv_path = _write_csv(rows, outdir)
+    per_sop = _per_sop(corpus, rows, outdir)
+    sop_status = Counter(e["status"] for e in per_sop.values())
 
     outdated_rows = [r for r in rows if r["status"] == "outdated"]
     # Group outdated by SOP for a readable headline, e.g. "SOP-CLN-003 (EU GMP Annex 15)".
@@ -152,6 +259,9 @@ def run(corpus: Corpus, outdir: Path) -> dict:
         "ICH supersessions unaddressed: Q2(R1)→Q2(R2) (SOP-QC-001), Q9→Q9(R1) (SOP-QC-003).",
         "ISO 14644-1:1999 (SOP-ENV-002) predates the 2015 cleanroom-classification revision.",
         "GAMP 5 1st Ed (SOP-EQP-005) and EU GMP Annex 1 2008 (SOP-MFG-005) both superseded.",
+        f"Per-SOP rollup: {sop_status.get('pass', 0)} of {sops_scanned} SOPs clean, "
+        f"{sop_status.get('fail', 0)} fail on an outdated citation, "
+        f"{sop_status.get('warn', 0)} need review, {sop_status.get('n/a', 0)} cite no standards.",
     ]
 
     # Public audit table matches deck slide 19 columns.
@@ -174,4 +284,6 @@ def run(corpus: Corpus, outdir: Path) -> dict:
         "table": table,
         "table_columns": ["sop_id", "reference", "status", "current_version", "action"],
         "outdated_by_standard": dict(outdated_by_std),
+        "scope": "both",
+        "per_sop": per_sop,
     }

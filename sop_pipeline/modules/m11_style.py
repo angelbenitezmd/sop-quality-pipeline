@@ -15,6 +15,7 @@ ground-truth validation label; every number below is computed from the prose.
 from __future__ import annotations
 
 import csv
+import math
 import re
 from collections import Counter
 from pathlib import Path
@@ -78,6 +79,15 @@ def _observe(sop) -> dict:
         "house_profile": sop.frontmatter.get("style_profile", ""),  # ground-truth label
         "conforms": not deviations,
         "deviates_on": ",".join(deviations) if deviations else "-",
+        # -- raw counts, used only by the per-SOP assessment (not by the CSV/table) --
+        "dept_name": sop.department_name,
+        "deviations": deviations,
+        "n_headings": len(headings),
+        "n_steps": len(steps),
+        "n_verb_first": vf,
+        "modal_top_count": counts.get(modal, 0),
+        "passive_count": lexicon.count_passive(sop.body),
+        "word_count": len(sop.words),
     }
 
 
@@ -211,6 +221,123 @@ def _dept_bars(ax, depts, vf_by_dept, pass_by_dept) -> None:
     viz.finish(ax)
 
 
+# ---------------------------------------------------------------------------
+# Per-SOP assessment — one scorecard per document, because a reviewer remediates
+# a single SOP at a time and needs to know exactly which of the four house-style
+# attributes THAT document breaks and what the edit is.
+# ---------------------------------------------------------------------------
+
+ATTR_LABELS = {
+    "heading": "heading style",
+    "modal": "obligation word",
+    "verb-first": "verb-first steps",
+    "passive": "passive voice",
+}
+
+
+def _remediation(r: dict, attr: str) -> str:
+    """One line: the deviation on `attr` plus the concrete edit that fixes it."""
+    if attr == "heading":
+        if r["heading_style"] == "none":
+            return (f"Heading style deviates: no parseable section headings at all, house "
+                    f"standard is '{HOUSE_HEADING}' — add markdown '## N. Title' headers so "
+                    f"the document has addressable sections.")
+        return (f"Heading style deviates: headings are '{r['heading_style']}', house standard "
+                f"is '{HOUSE_HEADING}' — convert all {r['n_headings']} section header(s) to "
+                f"markdown '## N. Title'.")
+    if attr == "modal":
+        return (f"Obligation word deviates: '{r['dominant_modal']}' is dominant "
+                f"({r['modal_top_count']} uses), house standard is '{HOUSE_MODAL}' — "
+                f"replace those {r['modal_top_count']} occurrence(s) with '{HOUSE_MODAL}'.")
+    if attr == "verb-first":
+        need = max(0, math.ceil(VERB_FIRST_MIN / 100 * r["n_steps"]) - r["n_verb_first"])
+        return (f"Verb-first steps deviate: {r['verb_first_pct']:.1f}% of {r['n_steps']} step "
+                f"lines open with a strong imperative, house floor is {VERB_FIRST_MIN:.0f}% — "
+                f"reword {need} step(s) to start with the action verb.")
+    excess = max(1, r["passive_count"] - int(PASSIVE_MAX / 100 * r["word_count"]))
+    return (f"Passive voice deviates: {r['passive_per_100w']:.2f} per 100 words "
+            f"({r['passive_count']} constructions in {r['word_count']} words), house ceiling is "
+            f"{PASSIVE_MAX:.1f} — recast ~{excess} passive clause(s) into active imperatives.")
+
+
+def _attr_table(r: dict) -> list[dict]:
+    """Four-row observed-vs-house comparison scoped to this SOP."""
+    spec = [
+        ("heading", "heading style", r["heading_style"], HOUSE_HEADING),
+        ("modal", "obligation word", r["dominant_modal"], f"'{HOUSE_MODAL}'"),
+        ("verb-first", "verb-first steps", f"{r['verb_first_pct']:.1f}%",
+         f">= {VERB_FIRST_MIN:.0f}%"),
+        ("passive", "passive / 100 words", f"{r['passive_per_100w']:.2f}",
+         f"<= {PASSIVE_MAX:.1f}"),
+    ]
+    return [{"attribute": label, "observed": obs, "house_standard": house,
+             "verdict": "deviates" if key in r["deviations"] else "conforms"}
+            for key, label, obs, house in spec]
+
+
+def _write_note(r: dict, status: str, findings: list[str], sopdir: Path) -> Path:
+    """Small per-SOP markdown remediation note (no image — corpus panels cover
+    the visual story, and 40 renders would not earn their runtime)."""
+    lines = [
+        f"# {r['sop_id']} — style & structure conformance note",
+        "",
+        f"- Department: {r['dept']} ({r['dept_name']})",
+        f"- House standard: {HOUSE_HEADING} headings, '{HOUSE_MODAL}', "
+        f">= {VERB_FIRST_MIN:.0f}% verb-first steps, <= {PASSIVE_MAX:.1f} passive/100w",
+        f"- Assessment: **{status.upper()}** — deviates on "
+        f"{len(r['deviations'])} of {len(ATTR_LABELS)} attributes",
+        "",
+        "| attribute | observed | house standard | verdict |",
+        "| --- | --- | --- | --- |",
+    ]
+    lines += [f"| {t['attribute']} | {t['observed']} | {t['house_standard']} | {t['verdict']} |"
+              for t in _attr_table(r)]
+    lines += ["", "## Findings"] + [f"{i}. {f}" for i, f in enumerate(findings, 1)] + [""]
+    path = sopdir / f"{r['sop_id']}.md"
+    path.write_text("\n".join(lines), encoding="utf-8")
+    return path
+
+
+def _assess_one(r: dict, sopdir: Path) -> dict:
+    """Build the per_sop entry for a single EN SOP."""
+    measurable = r["word_count"] > 0 and (r["n_headings"] or r["n_steps"])
+    devs = r["deviations"]
+    if not measurable:
+        status = "n/a"
+        findings = [f"{r['sop_id']} has no measurable prose (no headings, no step lines, "
+                    f"{r['word_count']} words) — style conformance cannot be assessed."]
+    else:
+        status = "pass" if not devs else ("warn" if len(devs) == 1 else "fail")
+        findings = [_remediation(r, a) for a in devs] or [
+            f"Conforms on all {len(ATTR_LABELS)} house-style attributes: "
+            f"{HOUSE_HEADING} headings, '{HOUSE_MODAL}', "
+            f"{r['verb_first_pct']:.1f}% verb-first steps, "
+            f"{r['passive_per_100w']:.2f} passive/100w — no rewrite needed."
+        ]
+    note = _write_note(r, status, findings, sopdir)
+    return {
+        "summary": {
+            "department": r["dept"],
+            "observed_heading_style": r["heading_style"],
+            "house_heading_style": HOUSE_HEADING,
+            "dominant_modal": r["dominant_modal"],
+            "house_modal": HOUSE_MODAL,
+            "verb_first_pct": r["verb_first_pct"],
+            "house_verb_first_min_pct": VERB_FIRST_MIN,
+            "passive_per_100w": r["passive_per_100w"],
+            "house_passive_max_per_100w": PASSIVE_MAX,
+            "observed_style": r["observed_style"],
+            "attributes_deviating": len(devs) if measurable else 0,
+            "deviates_on": r["deviates_on"] if measurable else "-",
+            "manifest_style_profile": r["house_profile"],  # ground-truth label only
+        },
+        "findings": findings,
+        "artifacts": [str(note.relative_to(PROJECT_ROOT))],
+        "table": _attr_table(r),
+        "status": status,
+    }
+
+
 def run(corpus: Corpus, outdir: Path) -> dict:
     rows = [_observe(s) for s in corpus.english()]
     depts = sorted({r["dept"] for r in rows})
@@ -262,6 +389,13 @@ def run(corpus: Corpus, outdir: Path) -> dict:
         for r in rows:
             w.writerow({c: r[c] for c in cols})
 
+    # -- per-SOP assessments (additive; every EN SOP gets an entry) -------------
+    sopdir = outdir / "sops"
+    sopdir.mkdir(parents=True, exist_ok=True)
+    per_sop = {r["sop_id"]: _assess_one(r, sopdir)
+               for r in sorted(rows, key=lambda r: r["sop_id"])}
+    status_mix = Counter(e["status"] for e in per_sop.values())
+
     dept_line = ", ".join(f"{d}={dept_dominant[d][1]}" for d in depts)
     return {
         "module": "m11_style",
@@ -287,6 +421,9 @@ def run(corpus: Corpus, outdir: Path) -> dict:
             f"Verb-first steps average {vf_by_dept.get('ENV', 0):.0f}% (ENV) / "
             f"{vf_by_dept.get('DOC', 0):.0f}% (DOC) in the house standard but "
             f"{vf_by_dept.get('MFG', 0):.0f}% in Manufacturing.",
+            f"Per-SOP verdicts: {status_mix['pass']} pass, {status_mix['warn']} warn "
+            f"(one attribute off), {status_mix['fail']} fail (two or more) — "
+            f"each SOP has its own remediation note under {sopdir.name}/.",
         ],
         "artifacts": [
             str(Path(png).relative_to(PROJECT_ROOT)),
@@ -294,4 +431,6 @@ def run(corpus: Corpus, outdir: Path) -> dict:
         ],
         "table": [{c: r[c] for c in cols} for r in rows],
         "table_columns": cols,
+        "scope": "per_sop",
+        "per_sop": per_sop,
     }

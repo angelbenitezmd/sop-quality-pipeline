@@ -12,6 +12,10 @@ regulatory-version table, via RegKB):
   consistency    internal uniformity of heading style + obligation modal
   defensibility  regulatory refs present AND current + ref/revision sections,
                  minus penalties for overdue periodic review and broken cross-refs
+
+Scope is per_sop: alongside the corpus rollup, every English SOP gets its own entry in
+`per_sop` — the five dimension scores, its weakest dimension and the measured drivers
+behind it, a pass/warn/fail status, and its own radar chart in `outdir/sops/`.
 """
 
 from __future__ import annotations
@@ -35,6 +39,8 @@ DIMENSIONS = ["clarity", "completeness", "usability", "consistency", "defensibil
 TARGET_PROFILE = {"clarity": 8.5, "completeness": 9.5, "usability": 8.5,
                   "consistency": 8.5, "defensibility": 8.5}
 TARGET_OVERALL = 8.2              # deck's stated target headline
+# Per-SOP status bands (contract: pass >= 8, warn 6-8, fail < 6).
+PASS_AT, WARN_AT = 8.0, 6.0
 
 _MD = re.compile(r"^\s{0,3}#{1,6}\s+(.*\S)\s*$")
 _ROMAN = re.compile(r"^\(?[IVXLC]{1,5}[\).]\s+\S")
@@ -191,12 +197,14 @@ def _score_sop(sop, kb: RegKB, corpus: Corpus) -> dict:
     heads = _headings(sop.body)
     present = _sections_present(sop.body, heads)
     cites = kb.extract(sop.sop_id, sop.body)
-    broken = any(corpus.get(ref) is None for ref in sop.cross_references)
+    broken_refs = [ref for ref in sop.cross_references if corpus.get(ref) is None]
+    broken = bool(broken_refs)
+    modal = lexicon.modal_counts(sop.body)
     scores = {
         "clarity": _clarity(amb_per100, grade, passive_per100),
         "completeness": _completeness(present),
         "usability": _usability(grade, sop.body),
-        "consistency": _consistency(heads, lexicon.modal_counts(sop.body)),
+        "consistency": _consistency(heads, modal),
         "defensibility": _defensibility(cites, present, sop.next_review, broken),
     }
     vals = [scores[d] for d in DIMENSIONS]
@@ -204,6 +212,26 @@ def _score_sop(sop, kb: RegKB, corpus: Corpus) -> dict:
     scores["overall"] = 0.65 * (sum(vals) / len(vals)) + 0.35 * min(vals)
     scores["sop_id"] = sop.sop_id
     scores["department"] = sop.department
+    # Measured drivers behind each dimension — narrative only, never re-scored.
+    steps = _step_lines(sop.body)
+    hstyles = Counter(st for st, _ in heads)
+    scores["_detail"] = {
+        "n_words": len(words), "grade": grade,
+        "amb_per100": amb_per100, "passive_per100": passive_per100,
+        "missing_sections": [k for k, v in present.items() if not v],
+        "n_steps": len(steps),
+        "verb_first": (sum(1 for s in steps if lexicon.sentence_starts_with_verb(s)) / len(steps)
+                       if steps else 0.0),
+        "n_headings": len(heads),
+        "dom_heading": hstyles.most_common(1)[0][0] if heads else "none",
+        "heading_unif": (hstyles.most_common(1)[0][1] / len(heads)) if heads else 0.0,
+        "dom_modal": (max(sorted(modal), key=lambda k: modal[k]) if sum(modal.values()) else "none"),
+        "modal_unif": (max(modal.values()) / sum(modal.values())) if sum(modal.values()) else 0.0,
+        "n_cites": len(cites),
+        "stale_cites": sorted(c.canonical for c in cites if c.status != "current"),
+        "overdue": _overdue(sop.next_review), "next_review": sop.next_review,
+        "broken_refs": broken_refs,
+    }
     return scores
 
 
@@ -321,6 +349,176 @@ def _render(rep: dict, avg: dict[str, float], baseline_overall: float, path: Pat
     return viz.save(fig, path)
 
 
+# --- per-SOP assessment ----------------------------------------------------------
+def _status(overall: float) -> str:
+    return "pass" if overall >= PASS_AT else ("warn" if overall >= WARN_AT else "fail")
+
+
+def _drivers(dim: str, d: dict) -> str:
+    """One clause explaining what the measurement says about this dimension."""
+    if dim == "clarity":
+        return (f"Grade {d['grade']:.1f} reading level, {d['amb_per100']:.2f} ambiguous terms and "
+                f"{d['passive_per100']:.2f} passive constructions per 100 words")
+    if dim == "completeness":
+        miss = d["missing_sections"]
+        return ("missing expected section(s): " + ", ".join(miss)) if miss else \
+               "all six expected sections present"
+    if dim == "usability":
+        if not d["n_steps"]:
+            return (f"no numbered or 'Step N:' instructions to work from, and Grade "
+                    f"{d['grade']:.1f} prose to read instead")
+        return (f"{d['n_steps']} enumerated steps of which {d['verb_first']:.0%} start with an "
+                f"imperative verb, over Grade {d['grade']:.1f} prose")
+    if dim == "consistency":
+        heads = (f"{d['n_headings']} headings, {d['heading_unif']:.0%} in the dominant "
+                 f"'{d['dom_heading']}' style" if d["n_headings"] else "no detectable headings")
+        modals = (f"obligation wording {d['modal_unif']:.0%} '{d['dom_modal']}'"
+                  if d["dom_modal"] != "none" else "no obligation modals at all")
+        return f"{heads}; {modals}"
+    bits = []
+    if not d["n_cites"]:
+        bits.append("no regulatory citations found")
+    elif d["stale_cites"]:
+        bits.append(f"{len(d['stale_cites'])}/{d['n_cites']} citations not current "
+                    f"({', '.join(d['stale_cites'])})")
+    else:
+        bits.append(f"all {d['n_cites']} citations current")
+    bits += [f"no {s.title()} section" for s in ("references", "revision history")
+             if s in d["missing_sections"]]
+    if d["overdue"]:
+        bits.append(f"periodic review overdue since {d['next_review']}")
+    if d["broken_refs"]:
+        bits.append("cross-refs to missing SOPs: " + ", ".join(d["broken_refs"]))
+    return "; ".join(bits)
+
+
+def _render_sop_radar(row: dict, status: str, path: Path) -> str:
+    """Radar of this SOP's five dimensions against the illustrative target profile."""
+    plt = viz.plt
+    from matplotlib.lines import Line2D
+
+    viz.apply_style()
+    order = list(DIMENSIONS)
+    angles = np.linspace(0, 2 * np.pi, len(order), endpoint=False).tolist()
+    closed = angles + angles[:1]
+    base = [row[d] for d in order]
+    base += base[:1]
+    targ = [TARGET_PROFILE[d] for d in order]
+    targ += targ[:1]
+    col = viz.status_color(status)
+
+    fig = plt.figure(figsize=(5.2, 6.0))
+    ax = fig.add_subplot(111, polar=True)
+    # Generous top/bottom margins: the spoke labels sit outside the outer ring, so the
+    # title needs clearance above them and the legend/caption need room below.
+    fig.subplots_adjust(left=0.13, right=0.87, top=0.72, bottom=0.16)
+    ax.set_theta_offset(np.pi / 2)       # Clarity at 12 o'clock ...
+    ax.set_theta_direction(-1)           # ... then clockwise, as on the corpus chart
+    ax.set_axisbelow(True)
+    # Target uses ACCENT (the corpus chart's target colour) so it never collides with the
+    # status-coloured baseline — a passing SOP would otherwise be green on green.
+    ax.plot(closed, targ, color=viz.ACCENT, lw=1.7, ls=(0, (5, 2.5)), zorder=6)
+    ax.fill(closed, targ, color=viz.ACCENT, alpha=0.07, zorder=2)
+    ax.plot(closed, base, color=col, lw=2.2, zorder=5)
+    ax.fill(closed, base, color=col, alpha=0.22, zorder=3)
+
+    ax.set_ylim(0, 10.6)
+    ax.set_xticks(angles)
+    ax.set_xticklabels([])               # placed manually, clear of the outer ring
+    ax.set_yticks([2, 4, 6, 8, 10])
+    ax.set_yticklabels([])               # drawn manually so they sit ON TOP of the polygons
+    for r in (2, 4, 6, 8, 10):
+        ax.text(np.pi, r, str(r), ha="center", va="center", fontsize=7, zorder=8, color=viz.INK,
+                bbox=dict(boxstyle="round,pad=0.14", fc="white", ec="none", alpha=0.92))
+    for ang, dim in zip(angles, order):
+        phi = np.pi / 2 - ang            # on-screen angle after offset/direction
+        dx, dy = np.cos(phi), np.sin(phi)
+        ha = "center" if abs(dx) < 0.25 else ("left" if dx > 0 else "right")
+        va = "center" if abs(dy) < 0.25 else ("bottom" if dy > 0 else "top")
+        ax.text(ang, 11.4, f"{dim.capitalize()}\n{row[dim]:.1f}", ha=ha, va=va, fontsize=8.5,
+                color=viz.INK, linespacing=1.35)
+
+    ax.set_title(f"{row['sop_id']} — quality scorecard\n"
+                 f"overall {row['overall']:.1f}/10 ({status.upper()}) vs target "
+                 f"{TARGET_OVERALL:.1f}",
+                 fontsize=11.5, pad=54)
+    fig.legend(handles=[
+        Line2D([], [], color=col, lw=2.2, label=f"{row['sop_id']} as-is ({status})"),
+        Line2D([], [], color=viz.ACCENT, lw=1.7, ls=(0, (5, 2.5)),
+               label="Target profile (illustrative)"),
+    ], loc="lower center", bbox_to_anchor=(0.5, 0.055), ncol=2, frameon=False, fontsize=8.5,
+        handlelength=2.1, handletextpad=0.6, columnspacing=1.5)
+    fig.text(0.5, 0.038, "radial axis = quality score (0–10)", ha="center", va="top",
+             fontsize=8, style="italic", color=viz.SECONDARY)
+    return viz.save(fig, path)
+
+
+def _per_sop_entry(row: dict, sopdir: Path, rel) -> dict:
+    """This SOP's own scorecard: scores, weakest-dimension diagnosis, status, radar."""
+    d = row["_detail"]
+    if not d["n_words"]:                 # nothing to read -> nothing to score
+        return {
+            "summary": {"words": 0, "status": "n/a"},
+            "findings": [f"{row['sop_id']} has no body text, so none of the five quality "
+                         f"dimensions can be measured — no assessment issued."],
+            "artifacts": [], "status": "n/a",
+        }
+
+    scores = {dim: round(row[dim], 2) for dim in DIMENSIONS}
+    overall = row["overall"]
+    status = _status(overall)
+    ranked = sorted(DIMENSIONS, key=lambda x: (row[x], x))      # stable: score, then name
+    weakest, strongest = ranked[0], ranked[-1]
+    # Everything within 0.5 of the floor is jointly the weakest link, capped at two.
+    weak_set = [x for x in ranked if row[x] <= row[weakest] + 0.5][:2]
+    plain_mean = sum(row[x] for x in DIMENSIONS) / len(DIMENSIONS)
+
+    findings = [
+        f"Overall {overall:.1f}/10 ({status.upper()}) against the illustrative "
+        f"{TARGET_OVERALL:.1f} target; weakest dimension is {weakest} ({row[weakest]:.1f}/10).",
+    ]
+    findings += [f"{x.capitalize()} {row[x]:.1f}/10 vs target {TARGET_PROFILE[x]:.1f} — "
+                 f"{_drivers(x, d)}." for x in weak_set]
+    findings.append(
+        f"Strongest dimension is {strongest} ({row[strongest]:.1f}/10) — {_drivers(strongest, d)}; "
+        f"remediation should protect it, not rewrite it.")
+    findings.append(
+        f"The weakest-link roll-up pulls this SOP from a {plain_mean:.1f} plain mean down to "
+        f"{overall:.1f}; lifting {weakest} alone to {TARGET_PROFILE[weakest]:.1f} is worth "
+        f"~{_projected_gain(row, weakest):.1f} points of overall score.")
+
+    table = [{"dimension": x.capitalize(), "score": round(row[x], 1),
+              "target": TARGET_PROFILE[x], "gap": round(max(0.0, TARGET_PROFILE[x] - row[x]), 1),
+              "drivers": _drivers(x, d)} for x in DIMENSIONS]
+
+    return {
+        "summary": {
+            **scores,
+            "overall": round(overall, 2),
+            "weakest_dimension": weakest,
+            "weakest_score": round(row[weakest], 2),
+            "strongest_dimension": strongest,
+            "target_overall": TARGET_OVERALL,
+            "gap_to_target": round(max(0.0, TARGET_OVERALL - overall), 2),
+            "department": row["department"],
+            "reading_grade": round(d["grade"], 1),
+            "status": status,
+        },
+        "findings": findings,
+        "artifacts": [rel(_render_sop_radar(row, status, sopdir / f"{row['sop_id']}.png"))],
+        "table": table,
+        "table_columns": ["dimension", "score", "target", "gap", "drivers"],
+        "status": status,
+    }
+
+
+def _projected_gain(row: dict, dim: str) -> float:
+    """Overall-score gain from lifting one dimension to its target, all else equal."""
+    lifted = {x: (TARGET_PROFILE[x] if x == dim else row[x]) for x in DIMENSIONS}
+    vals = list(lifted.values())
+    return max(0.0, (0.65 * (sum(vals) / len(vals)) + 0.35 * min(vals)) - row["overall"])
+
+
 def run(corpus: Corpus, outdir: Path) -> dict:
     np.random.seed(RANDOM_STATE)
     outdir = Path(outdir)
@@ -357,6 +555,12 @@ def run(corpus: Corpus, outdir: Path) -> dict:
     def rel(p: Path) -> str:
         return str(Path(p).resolve().relative_to(PROJECT_ROOT))
 
+    # Per-SOP dossiers: every English SOP gets its own scorecard + radar in outdir/sops/.
+    sopdir = outdir / "sops"
+    sopdir.mkdir(parents=True, exist_ok=True)
+    per_sop = {r["sop_id"]: _per_sop_entry(r, sopdir, rel)
+               for r in sorted(rows, key=lambda r: r["sop_id"])}
+
     return {
         "module": "m07_scorecard",
         "title": "Quality Scorecard",
@@ -387,4 +591,6 @@ def run(corpus: Corpus, outdir: Path) -> dict:
         "table": table,
         "table_columns": ["sop_id", "dept", "clarity", "completeness", "usability",
                           "consistency", "defensibility", "overall"],
+        "scope": "per_sop",
+        "per_sop": per_sop,
     }

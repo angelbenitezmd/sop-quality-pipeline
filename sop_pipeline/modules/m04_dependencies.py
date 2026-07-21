@@ -296,6 +296,8 @@ def run(corpus: Corpus, outdir: Path) -> dict:
         "module": "m04_dependencies",
         "title": "Cross-Reference Dependency Mapping",
         "slide": 18,
+        # Relational: one corpus view covers the set — no per-SOP assessment.
+        "scope": "corpus",
         "summary": summary,
         "key_findings": key_findings,
         "artifacts": [png_rel],

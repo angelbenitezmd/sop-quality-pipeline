@@ -9,6 +9,32 @@ pharmaceutical manufacturing SOP corpus.
 fill-finish site (vials + pre-filled syringes). All 42 SOPs and their data are mock,
 authored specifically to exercise the pipeline.
 
+## Two levels of output
+
+**Every SOP gets its own assessment.** A corpus average is not actionable when a reviewer
+is remediating one specific procedure, so the pipeline produces both:
+
+| Output | What it answers | Path |
+|---|---|---|
+| Corpus dashboard | How is the SOP estate doing? | `output/report/index.html` |
+| **Per-SOP dossiers** | How is *this document* doing? | `output/sops/<SOP-ID>.html` |
+| Per-SOP index | Which documents need work first? | `output/sops/index.html` |
+
+Each dossier carries that SOP's own scorecard radar, readability grades, regulatory
+citations, style deviations, rewrite before/after, flowchart, and training package — plus
+a status of **Conforms / Review / Action required** rolled up from every capability. The
+index lists all documents worst-first: that ordering is the remediation queue.
+
+Capabilities split by scope. Relational analyses stay corpus-level because one view
+genuinely covers the set; document-level analyses produce an assessment per SOP:
+
+- **Corpus-wide** — similarity (m01), topic clustering (m02), dependency graph (m04),
+  MinHash duplicates (m08), coverage gaps (m09)
+- **Per-SOP** — readability (m03), rewriting (m06), scorecard (m07), visual aids (m10),
+  style (m11), multi-language (m12), training (m13)
+- **Both** — regulatory audit (m05): each citation assessed individually, then rolled up
+  per SOP and across the corpus
+
 ## The 13 capabilities
 
 Each maps to a "Proven Capabilities" slide in the deck (Phase 4 = training, slide 13):
@@ -110,11 +136,15 @@ sop_pipeline/
   core/regkb.py            # regulatory citation extraction + version currency KB
   core/viz.py              # shared matplotlib palette/helpers
   modules/m01..m13.py      # the 13 capabilities
-  report.py                # self-contained HTML dashboard renderer
+  report.py                # corpus dashboard renderer
+  sop_report.py            # per-SOP assessment dossiers
   cli.py                   # orchestrator
 output/
-  mNN_*/…                  # per-module artifacts (PNGs, CSVs) + summary.json
-  report/index.html        # the dashboard
+  mNN_*/…                  # per-module corpus artifacts + summary.json
+  mNN_*/sops/…             # per-module, per-SOP artifacts (radar charts, flowcharts, packages)
+  report/index.html        # corpus dashboard
+  sops/index.html          # per-SOP index (worst-first remediation queue)
+  sops/<SOP-ID>.html       # one assessment dossier per document
 ```
 
 ## Seeded defects (what the pipeline is designed to catch)

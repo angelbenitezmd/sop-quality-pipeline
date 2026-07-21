@@ -19,7 +19,7 @@ import traceback
 from pathlib import Path
 
 from .core.corpus import OUTPUT_DIR, PROJECT_ROOT, load_corpus
-from . import report
+from . import report, sop_report
 
 MODULES_DIR = Path(__file__).resolve().parent / "modules"
 MODULE_RE = re.compile(r"^m(\d{2})_[a-z0-9_]+$")
@@ -96,14 +96,21 @@ def cmd_run(args) -> int:
             print(f"          -> {r['_error']}")
         results.append(r)
 
-    # Always (re)render the dashboard from whatever ran. If a single module was run,
-    # merge with previously saved summaries so the dashboard stays complete.
+    # Always (re)render from whatever ran. If a single module was run, merge with
+    # previously saved summaries so both reports stay complete.
     all_results = _merge_with_saved(results)
     report_path = report.render(all_results, corpus_stats(corpus), OUTPUT_DIR / "report" / "index.html")
+    # Every SOP also gets its own assessment dossier — a corpus average is not
+    # actionable when remediating one specific document.
+    sop_index, rows = sop_report.render_all(corpus, all_results, OUTPUT_DIR)
+
     print("-" * 60)
     ok = sum(1 for r in results if not r.get("_error"))
     print(f"{ok}/{len(results)} module(s) succeeded.")
-    print(f"Dashboard: {report_path}")
+    flagged = sum(1 for r in rows if r["overall"] in ("fail", "warn"))
+    print(f"Per-SOP assessments: {len(rows)} ({flagged} flagged for action or review)")
+    print(f"Dashboard:  {report_path}")
+    print(f"Per-SOP:    {sop_index}")
     return 0 if ok == len(results) else 2
 
 

@@ -118,6 +118,8 @@ def run(corpus: Corpus, outdir: Path) -> dict:
         "module": "m08_minhash",
         "title": "MinHash Near-Duplicate Detection",
         "slide": 22,
+        # Relational: one corpus view covers the set — no per-SOP assessment.
+        "scope": "corpus",
         "summary": summary,
         "key_findings": key_findings,
         "artifacts": [str(Path(png).relative_to(PROJECT_ROOT))],
