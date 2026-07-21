@@ -41,6 +41,10 @@ _DECISION_RE = re.compile(r"\b(if|when|unless|whenever|in the event|should any)\
 _COND_RE = re.compile(r"^\s*(?:if|when|whenever|unless)\s+(.*?)(?:\s*,\s*|\s+then\s+)(.+)$", re.I)
 # A trailing coordinated clause that is commentary rather than the branch itself.
 _COORD_RE = re.compile(r",\s+(?:and|but|so|then|because|since|which|although)\s+", re.I)
+# "... shall be used ... and shall be discarded when X" — the last conjoined verb
+# phrase is the action the condition actually governs.
+_ACTION_TAIL_RE = re.compile(
+    r"\s+and\s+(?=(?:it\s|they\s|the\s\w+\s)?(?:shall|should|must|will|is|are)\b)", re.I)
 # Strip "## 4.", "V.", "6.2)" style numbering from a heading (never bare letters).
 _SECT_PREFIX_RE = re.compile(r"^\s*#{0,6}\s*(?:\d+(?:\.\d+)*[.)]?|[IVXLC]{1,5}[.)])\s+")
 
@@ -124,8 +128,7 @@ def _condense(text: str, max_chars: int = 80) -> str:
 def _clause(text: str, max_chars: int) -> str:
     """One clause of a conditional: drop trailing commentary, then condense."""
     s = _COORD_RE.split(text.strip(), 1)[0]
-    s = re.sub(r"^(?:that|the event that)\s+", "", s.strip(), flags=re.I)
-    return _condense(s, max_chars).rstrip(" .;,")
+    return _condense(s.strip(), max_chars).rstrip(" .;,")
 
 
 def _fit(text: str, width: int, max_lines: int) -> str:
@@ -147,7 +150,7 @@ def _decision_parts(text: str) -> tuple[str, str] | None:
     has no extractable branch — those are drawn as ordinary process steps."""
     m = _COND_RE.match(text)  # "If <cond>, <action>" — the house-style form
     if m:
-        cond, action = _clause(m.group(1), 54), _clause(m.group(2), 72)
+        cond, action = _clause(m.group(1), 66), _clause(m.group(2), 84)
         return (cond, action) if _substantive(cond) and _substantive(action) else None
     for sent in split_sentences(text):
         cue = _DECISION_RE.search(sent)
@@ -155,10 +158,14 @@ def _decision_parts(text: str) -> tuple[str, str] | None:
             continue
         m2 = _COND_RE.match(sent[cue.start():])  # "... , if <cond>, <action>"
         if m2:
-            cond, action = _clause(m2.group(1), 54), _clause(m2.group(2), 72)
+            cond, action = _clause(m2.group(1), 66), _clause(m2.group(2), 84)
         else:  # "<action> whenever <cond>" — condition trails the governing action
-            cond = _clause(sent[cue.end():], 54)
-            action = _clause(_COORD_RE.split(sent[:cue.start()])[-1], 72)
+            rest = sent[cue.end():]
+            if cue.group(0).lower() in ("in the event", "should any"):
+                rest = re.sub(r"^\s*that\s+", "", rest, flags=re.I)
+            cond = _clause(rest, 66)
+            lead = _COORD_RE.split(sent[:cue.start()])[-1]
+            action = _clause(_ACTION_TAIL_RE.split(lead)[-1], 84)
         if _substantive(cond) and _substantive(action):
             return cond, action
     return None
@@ -178,7 +185,11 @@ def _section_label(head: str) -> str:
 
 
 def _mermaid_clean(text: str) -> str:
-    return text.replace('"', "'").replace("±", "+/-").replace("\n", " ").strip()
+    """Make a label safe inside a quoted Mermaid node. Angle brackets become
+    Mermaid entity codes — an HTML-label renderer would otherwise swallow
+    compendial references such as 'USP <85>' as a tag."""
+    return (text.replace('"', "'").replace("±", "+/-").replace("\n", " ")
+                .replace("<", "#60;").replace(">", "#62;").strip())
 
 
 def _pages_replaced(steps, decisions) -> int:
@@ -286,7 +297,7 @@ def _render(sop, head, steps, path: Path) -> str:
         elif _is_dec(node):
             n, text = steps[node]
             cond, action = _decision_parts(text)
-            q = _fit(cond[:1].upper() + cond[1:] + "?", 18, 4)
+            q = _fit(cond[:1].upper() + cond[1:] + "?", 22, 3)
             _draw_diamond(ax, SPINE_X, cy, DIA_W, DIA_H, q, viz.ACCENT)
             geom[node] = (cy, DIA_H / 2, DIA_W / 2)
             # Yes branch -> exception/outcome box to the right (out-of-spec action).
@@ -313,7 +324,10 @@ def _render(sop, head, steps, path: Path) -> str:
             # Outcome box rejoins the flow: down its own column, then straight into
             # the right-hand edge of the next node (defined connection points).
             oy, oh, _ = geom[("out", a)]
-            _elbow_arrow(ax, [(OUT_X, oy - oh), (OUT_X, by), (SPINE_X + bw, by)])
+            # aim at the upper-right *edge* of a diamond, not its right vertex —
+            # that vertex is already the origin of the next 'Yes' branch.
+            join = (SPINE_X + bw / 2, by + bh / 2) if _is_dec(b) else (SPINE_X + bw, by)
+            _elbow_arrow(ax, [(OUT_X, oy - oh), (OUT_X, join[1]), join])
 
     # Key lists only the shapes actually drawn (straight-through procedures have
     # no diamond, so advertising one would misread the diagram).
@@ -333,10 +347,15 @@ def _render(sop, head, steps, path: Path) -> str:
         mpatches.Patch(facecolor=viz.GOOD, edgecolor=viz.INK, lw=0.8,
                        label="End terminator"),
     ]
-    # Park the key in the middle of the otherwise-empty branch column so the
-    # composition is balanced instead of hugging the left edge.
-    out_rows = [v[0] + v[1] for k, v in geom.items() if isinstance(k, tuple)]
-    key_y = (top_edge + (max(out_rows) if out_rows else bot_edge)) / 2
+    # Park the key in the tallest free gap of the branch column, so the composition
+    # is balanced and the key never lands on an out-of-spec box wherever the
+    # decisions happen to fall.
+    boxes = sorted(((v[0] - v[1], v[0] + v[1]) for k, v in geom.items()
+                    if isinstance(k, tuple)), key=lambda iv: -iv[1])
+    edges = [top_edge] + [e for lo, hi in boxes for e in (hi, lo)] + [bot_edge]
+    gaps = [(edges[i], edges[i + 1]) for i in range(0, len(edges) - 1, 2)]
+    hi_y, lo_y = max(gaps, key=lambda g: g[0] - g[1])
+    key_y = (hi_y + lo_y) / 2
     leg = ax.legend(handles=handles, loc="center", bbox_to_anchor=(OUT_X, key_y),
                     bbox_transform=ax.transData, fontsize=8.5, title="Key",
                     frameon=True, facecolor="white", edgecolor=viz.GRID,
@@ -356,18 +375,20 @@ def _mermaid(sop, head, steps) -> str:
     lines = ["flowchart TD",
              f'    START(["START: {_mermaid_clean(sop.title)}"])']
     prev = "START"
-    for n, text in steps:
-        nid = f"S{n}"
+    # node ids follow position, not the printed number — a document that restarts
+    # its numbering must not collapse two steps onto one Mermaid node.
+    for i, (n, text) in enumerate(steps, 1):
+        nid = f"S{i}"
         parts = _decision_parts(text)
         if parts:
             cond, action = parts
-            did = f"D{n}"
+            did = f"D{i}"
             lines.append(f'    {did}{{"{_mermaid_clean(cond[:1].upper() + cond[1:])}?"}}')
-            lines.append(f'    O{n}["{_mermaid_clean(action[:1].upper() + action[1:])}"]')
+            lines.append(f'    O{i}["{_mermaid_clean(action[:1].upper() + action[1:])}"]')
             lines.append(f"    {prev} --> {did}")
-            lines.append(f"    {did} -- Yes --> O{n}")
+            lines.append(f"    {did} -- Yes --> O{i}")
             prev = did  # 'No' branch carries the main flow forward
-            lines.append(f"    O{n} --> ENDN")
+            lines.append(f"    O{i} --> ENDN")
         else:
             lines.append(f'    {nid}["{n}. {_mermaid_clean(text)}"]')
             lines.append(f"    {prev} --> {nid}")
