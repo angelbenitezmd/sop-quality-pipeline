@@ -74,9 +74,29 @@ To run against real documents:
 
 **Do not commit client SOPs.** `data/sops_real/` and `data/sops_client/` are gitignored.
 
-Known gaps for real-world use: ingest is Markdown-only (PDF/DOCX conversion is not built
-in), and the rewriter's rule-based engine is deliberately conservative — set
-`ANTHROPIC_API_KEY` to enable the LLM path in `m06`.
+Known gaps for real-world use: ingest is Markdown-only (PDF/DOCX conversion is not built in).
+
+## Optional: enabling the LLM rewrite path (`m06`)
+
+The pipeline runs **fully offline with no API key**. The only module that can call an API
+is `m06_rewriter`, and only when you opt in:
+
+```bash
+pip install anthropic                 # not in requirements.txt by default
+export ANTHROPIC_API_KEY=sk-ant-...   # the pipeline reads the environment
+python3 -m sop_pipeline.cli run --module 06
+```
+
+`ANTHROPIC_MODEL` overrides the model (default `claude-opus-4-8`). See
+[.env.example](.env.example) for the full list of variables — note that a `.env` file is
+**not** auto-loaded; either `export` the variables or use a loader such as `direnv`.
+
+**Never commit a key.** `.env` and `.env.*` are gitignored; only `.env.example` is tracked.
+
+How failure is handled matters for an audit trail: if the key is missing, the `anthropic`
+package isn't installed, the model declines, the response would be truncated, or the call
+errors, `m06` emits a warning, falls back to the rule-based engine, and reports the engine
+that **actually ran**. A silent fallback is never recorded as an LLM rewrite.
 
 ## Layout
 

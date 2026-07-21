@@ -11,3 +11,8 @@ networkx>=3.2            # cross-reference dependency graph                 (m04
 datasketch>=1.6          # MinHash + LSH near-duplicate detection           (m08)
 textstat>=0.7            # Flesch-Kincaid / Gunning Fog / Coleman-Liau      (m03, m06, m07)
 PyYAML>=6.0              # SOP frontmatter parsing (optional: a fallback parser is used if absent)
+
+# Optional — only needed to enable the LLM rewrite path in m06_rewriter.
+# Without it (or without ANTHROPIC_API_KEY) m06 runs its rule-based engine and
+# reports "rule-based". Uncomment to enable, or: pip install anthropic
+# anthropic>=0.40

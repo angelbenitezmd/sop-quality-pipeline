@@ -21,6 +21,7 @@ from __future__ import annotations
 import os
 import re
 import statistics
+import warnings
 from pathlib import Path
 
 import textstat
@@ -217,22 +218,62 @@ def _rewrite_document(body: str) -> str:
     return "\n\n".join(b for b in blocks if b.strip())
 
 
+# Override with ANTHROPIC_MODEL to run the rewrite on a different Claude model.
+LLM_MODEL = os.environ.get("ANTHROPIC_MODEL") or "claude-opus-4-8"
+
+LLM_SYSTEM = (
+    "You rewrite pharmaceutical GMP SOPs for clarity without changing their meaning. "
+    "Rules: keep every regulatory citation, cross-reference (SOP-XXX-000), numeric "
+    "parameter, and safety warning exactly as written — never drop or invent one. "
+    "Convert steps to verb-first imperatives, split run-on sentences, and prefer active "
+    "voice. Where the source is vague ('appropriate', 'as necessary'), mark it "
+    "[DEFINE <what is needed>: <original word>] rather than inventing a specification. "
+    "Return only the rewritten SOP body in Markdown."
+)
+
+
 def _maybe_llm_rewrite(text: str) -> str | None:
-    """Optional real-API path; returns None so the rule-based engine runs by default."""
+    """Optional real-API path. Returns None (falling back to the rule-based engine)
+    when no key is configured, the SDK is missing, or the call fails.
+
+    A failure is warned about rather than swallowed silently — an SOP rewrite that
+    quietly changed engines would be untraceable in an audit.
+    """
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return None
-    try:  # pragma: no cover - never exercised without a key
+    try:  # pragma: no cover - requires a live API key
         import anthropic
-
-        client = anthropic.Anthropic()
-        msg = client.messages.create(
-            model="claude-opus-4-8", max_tokens=4000, temperature=0,
-            messages=[{"role": "user", "content": "Rewrite this SOP for clarity, "
-                       "verb-first imperative steps, short sentences, and measurable "
-                       "criteria:\n\n" + text}],
+    except ImportError:
+        warnings.warn(
+            "ANTHROPIC_API_KEY is set but the 'anthropic' package is not installed "
+            "(pip install anthropic). Falling back to the rule-based engine.",
+            RuntimeWarning, stacklevel=2,
         )
-        return "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
-    except Exception:
+        return None
+    try:  # pragma: no cover - requires a live API key
+        client = anthropic.Anthropic()
+        # No temperature/top_p/top_k: those are rejected on Opus 4.7+.
+        msg = client.messages.create(
+            model=LLM_MODEL,
+            max_tokens=16000,
+            thinking={"type": "adaptive"},
+            system=LLM_SYSTEM,
+            messages=[{"role": "user", "content": "Rewrite this SOP:\n\n" + text}],
+        )
+        if msg.stop_reason == "refusal":
+            warnings.warn("Model declined the rewrite; using the rule-based engine.",
+                          RuntimeWarning, stacklevel=2)
+            return None
+        if msg.stop_reason == "max_tokens":
+            warnings.warn("Rewrite hit max_tokens and would be truncated; "
+                          "using the rule-based engine.", RuntimeWarning, stacklevel=2)
+            return None
+        # Skip thinking blocks — only text blocks carry the rewritten SOP.
+        out = "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
+        return out.strip() or None
+    except Exception as exc:
+        warnings.warn(f"Anthropic API rewrite failed ({type(exc).__name__}: {exc}). "
+                      "Falling back to the rule-based engine.", RuntimeWarning, stacklevel=2)
         return None
 
 
@@ -315,8 +356,13 @@ def run(corpus: Corpus, outdir: Path) -> dict:
     sop = _pick_worst(corpus)
     original = sop.body
 
-    rewritten = _maybe_llm_rewrite(original) or _rewrite_document(original)
-    engine = "anthropic-api" if os.environ.get("ANTHROPIC_API_KEY") else "rule-based"
+    # Report the engine that actually produced the text, not merely whether a key
+    # was present — a silent fallback must never be recorded as an LLM rewrite.
+    llm_output = _maybe_llm_rewrite(original)
+    if llm_output:
+        rewritten, engine = llm_output, f"anthropic-api ({LLM_MODEL})"
+    else:
+        rewritten, engine = _rewrite_document(original), "rule-based"
 
     before, after = _metrics(original), _metrics(rewritten)
 
@@ -365,7 +411,9 @@ def run(corpus: Corpus, outdir: Path) -> dict:
             "measurable criterion — flagged, not silently resolved.",
             f"Passive constructs {before['passive']} -> {after['passive']}; "
             f"estimated pages {before['pages']} -> {after['pages']}.",
-            f"Engine: {engine} (Anthropic API used only when ANTHROPIC_API_KEY is set).",
+            f"Engine actually used: {engine}. The LLM path runs only when ANTHROPIC_API_KEY "
+            "is set and the call succeeds; any failure falls back to rules and is reported "
+            "as rule-based, never as an LLM rewrite.",
         ],
         "artifacts": [rel(png), rel(md)],
         "table": table,
