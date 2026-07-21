@@ -37,6 +37,12 @@ def _build_graph(corpus: Corpus) -> tuple[nx.DiGraph, set[str], set[str]]:
     return g, real_ids, missing
 
 
+def _canonical_cycle(cycle: list[str]) -> list[str]:
+    """Rotate a cycle to begin at its smallest node so it is stable across runs."""
+    i = cycle.index(min(cycle))
+    return cycle[i:] + cycle[:i]
+
+
 def _cycle_edges(g: nx.DiGraph) -> set[tuple[str, str]]:
     """Edges lying on at least one cycle == edges inside a non-trivial SCC."""
     comp_of: dict[str, int] = {}
@@ -129,7 +135,11 @@ def run(corpus: Corpus, outdir: Path) -> dict:
 
     in_deg = dict(g.in_degree())
     orphans = sorted(n for n in real_ids if in_deg[n] == 0 and g.out_degree(n) == 0)
-    cycles = list(nx.simple_cycles(g))
+    # simple_cycles yields each cycle at an arbitrary rotation, so rotate every one to
+    # start at its lexicographically smallest node — otherwise the same cycle is reported
+    # differently between runs and results can't be diffed across machines.
+    cycles = [_canonical_cycle(c) for c in nx.simple_cycles(g)]
+    cycles.sort()
     cyc_edges = _cycle_edges(g)
     # Broken references, with the SOPs that point at each dangling target.
     broken = {m: sorted(u for u, v in g.in_edges(m)) for m in sorted(missing)}
