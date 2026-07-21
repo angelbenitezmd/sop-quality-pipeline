@@ -424,7 +424,7 @@ def _assess(sop, sops_dir: Path) -> dict:
                "headings, with no numbered step sequence")
         return {
             "summary": {"steps": len(steps), "decisions": 0, "pages_replaced_est": 0,
-                        "procedure_section": "—"},
+                        "procedure_section": sect},
             "findings": [f"No step-wise procedure to convert — {why}; a flowchart would "
                          f"have to be invented rather than derived from the text."],
             "artifacts": [],
