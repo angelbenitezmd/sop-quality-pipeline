@@ -1,0 +1,31 @@
+# Generated pipeline artifacts — rebuilt by `python3 -m sop_pipeline.cli run`.
+# Keeping these out of git avoids committing ~2 MB of PNGs and a 1.7 MB dashboard
+# on every run, and prevents noisy binary diffs.
+output/
+
+# Real SOP corpora are confidential — never commit client documents.
+# The mock corpus in data/sops/ IS tracked; put real SOPs in data/sops_real/.
+data/sops_real/
+data/sops_client/
+*.private.md
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# macOS / editors
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# Credentials — never commit API keys
+.env
+.env.*
+!.env.example

@@ -1,0 +1,13 @@
+# SOP Quality Transformation pipeline — runtime dependencies.
+# Install with:  pip install -r requirements.txt
+#
+# Lower bounds are the versions this was developed and verified against.
+# No network access is required at runtime.
+
+scikit-learn>=1.4        # TF-IDF, cosine similarity, TruncatedSVD, KMeans  (m01, m02)
+numpy>=1.26              # array math throughout
+matplotlib>=3.8          # all chart rendering (headless Agg backend)
+networkx>=3.2            # cross-reference dependency graph                 (m04)
+datasketch>=1.6          # MinHash + LSH near-duplicate detection           (m08)
+textstat>=0.7            # Flesch-Kincaid / Gunning Fog / Coleman-Liau      (m03, m06, m07)
+PyYAML>=6.0              # SOP frontmatter parsing (optional: a fallback parser is used if absent)
