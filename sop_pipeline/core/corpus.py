@@ -33,6 +33,18 @@ SOP_ID_RE = re.compile(r"SOP-[A-Z]{2,4}-\d{3}(?:-[A-Z]{2})?")
 # A section heading: markdown "## 3. Title", "## Title", or all-caps "3. TITLE".
 _MD_HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+(.*\S)\s*$")
 
+# Bare roman-numeral headings ("I. Purpose", "VII. Calculation and Acceptance Criteria").
+# QC-style SOPs number their sections this way with no '#' and no all-caps, so without
+# this they collapse into a single section. Kept deliberately strict — a valid roman
+# numeral, a short title-cased remainder, and no sentence-ending period — so ordinary
+# prose beginning "I." is not mistaken for a heading.
+_ROMAN_HEADING_RE = re.compile(
+    r"^\s{0,3}"
+    r"(?=[IVXLC])(?:M{0,3}(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3}))"
+    r"[.)]\s+"
+    r"([A-Z][A-Za-z0-9][^.!?]{1,70})\s*$"
+)
+
 
 @dataclass
 class Section:
@@ -230,9 +242,14 @@ def _split_sections(body: str) -> list[Section]:
             and sum(c.isalpha() for c in line) >= 4
             and line.strip() == line.strip().upper()
         )
+        roman = _ROMAN_HEADING_RE.match(line)
         if md:
             flush()
             cur_heading = md.group(1).strip()
+            cur_lines = []
+        elif roman:
+            flush()
+            cur_heading = line.strip()
             cur_lines = []
         elif is_caps_heading:
             flush()
