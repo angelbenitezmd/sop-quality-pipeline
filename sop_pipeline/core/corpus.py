@@ -1,6 +1,7 @@
 """Corpus data model and loader.
 
-An SOP on disk is a Markdown file with YAML frontmatter (see data/sops/*.md).
+An SOP on disk is a Markdown file with YAML frontmatter. Your corpus lives in
+data/sops/ (gitignored); a demo corpus ships in examples/mock_corpus/.
 This module parses those files into `SOP` objects and groups them into a `Corpus`.
 
 Every pipeline module receives a `Corpus` and writes artifacts into its own output
@@ -23,8 +24,11 @@ from typing import Iterable
 # .../sop_pipeline/core/corpus.py -> project root is three parents up
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = PROJECT_ROOT / "data"
-SOP_DIR = DATA_DIR / "sops"
-MANIFEST_PATH = DATA_DIR / "corpus_manifest.json"
+SOP_DIR = DATA_DIR / "sops"                     # your SOPs (gitignored)
+EXAMPLE_SOP_DIR = PROJECT_ROOT / "examples" / "mock_corpus"   # bundled demo corpus
+CONFIG_PATH = PROJECT_ROOT / "config" / "site_config.json"    # edit this for your site
+LEGACY_MANIFEST_PATH = DATA_DIR / "corpus_manifest.json"      # pre-split layout
+GROUND_TRUTH_NAME = "ground_truth.json"         # optional, sits beside a corpus
 OUTPUT_DIR = PROJECT_ROOT / "output"
 
 # Matches an SOP identifier anywhere in prose, e.g. "SOP-CLN-001" or "SOP-CLN-001-ES".
@@ -294,11 +298,33 @@ def split_sentences(text: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def load_manifest(path: Path | None = None) -> dict:
-    path = path or MANIFEST_PATH
-    if not path.exists():
-        return {}
-    return json.loads(path.read_text(encoding="utf-8"))
+def load_manifest(path: Path | None = None, sop_dir: Path | None = None) -> dict:
+    """Site configuration, merged with a corpus's ground truth if it has one.
+
+    Two separate concerns share one dict so modules keep a single lookup:
+      * ``config/site_config.json`` — regulatory version table, coverage
+        requirements, departments, house style. Applies to ANY corpus; this is
+        the file to edit for a real site.
+      * ``<corpus>/ground_truth.json`` — optional, describes deliberately seeded
+        defects. Only the bundled mock corpus has one; real corpora do not, and
+        the pipeline runs fine without it.
+
+    Falls back to the pre-split ``data/corpus_manifest.json`` so older checkouts
+    keep working.
+    """
+    if path is not None:
+        return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+
+    manifest: dict = {}
+    if CONFIG_PATH.exists():
+        manifest.update(json.loads(CONFIG_PATH.read_text(encoding="utf-8")))
+    elif LEGACY_MANIFEST_PATH.exists():
+        manifest.update(json.loads(LEGACY_MANIFEST_PATH.read_text(encoding="utf-8")))
+
+    truth_path = (sop_dir or SOP_DIR) / GROUND_TRUTH_NAME
+    if truth_path.exists():
+        manifest.update(json.loads(truth_path.read_text(encoding="utf-8")))
+    return manifest
 
 
 def load_sop(path: Path, dept_names: dict[str, str] | None = None) -> SOP:
@@ -323,12 +349,40 @@ def _infer_dept(sop_id: str) -> str:
     return m.group(1) if m else "UNK"
 
 
+def sop_files(directory: Path) -> list[Path]:
+    """The *.md files in a directory that are actually SOPs.
+
+    Skips documentation that lives alongside a corpus (README, CONTRIBUTING, and
+    dot/underscore-prefixed files) — otherwise the placeholder README in an empty
+    ``data/sops/`` would be parsed as a one-document corpus.
+    """
+    skip = {"readme", "contributing", "license", "changelog", "notes", "index"}
+    return sorted(
+        p for p in directory.glob("*.md")
+        if p.stem.lower() not in skip and not p.name.startswith((".", "_"))
+    )
+
+
+def resolve_sop_dir(sop_dir: Path | None = None) -> Path:
+    """Where to read SOPs from: an explicit dir, else your own corpus, else the demo.
+
+    ``data/sops/`` is where real SOPs go and is gitignored, so a fresh clone finds
+    it empty — in that case fall back to the bundled mock corpus so the pipeline is
+    runnable immediately after cloning.
+    """
+    if sop_dir is not None:
+        return Path(sop_dir)
+    if SOP_DIR.is_dir() and sop_files(SOP_DIR):
+        return SOP_DIR
+    return EXAMPLE_SOP_DIR
+
+
 def load_corpus(sop_dir: Path | None = None, manifest_path: Path | None = None) -> Corpus:
-    """Load every *.md SOP under ``sop_dir`` and attach the manifest."""
-    sop_dir = sop_dir or SOP_DIR
-    manifest = load_manifest(manifest_path)
+    """Load every *.md SOP under ``sop_dir`` and attach site config + ground truth."""
+    sop_dir = resolve_sop_dir(sop_dir)
+    manifest = load_manifest(manifest_path, sop_dir)
     dept_names = manifest.get("departments", {})
-    paths = sorted(sop_dir.glob("*.md"))
+    paths = sop_files(sop_dir)
     sops = [load_sop(p, dept_names) for p in paths]
     return Corpus(sops, manifest)
 

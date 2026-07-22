@@ -1,13 +1,17 @@
 # SOP Quality Transformation Pipeline
 
-A working reference implementation of the **13 capabilities** in the
-*AI-Powered SOP Quality Transformation & Lifecycle Management* proposal
-(`SOP_Quality_Transformation_Pitch_Generic.pptx`), run against a mock
-pharmaceutical manufacturing SOP corpus.
+Analyses a pharmaceutical SOP estate across **13 capabilities** — similarity, readability,
+regulatory-citation currency, cross-reference integrity, coverage gaps, style conformance,
+and more — producing a corpus dashboard plus an individual assessment for every document.
+It implements the *AI-Powered SOP Quality Transformation & Lifecycle Management* proposal
+(`SOP_Quality_Transformation_Pitch_Generic.pptx`).
 
-**Client (fictional):** Meridian Pharmaceuticals — Building 4, a sterile injectable
-fill-finish site (vials + pre-filled syringes). All 42 SOPs and their data are mock,
-authored specifically to exercise the pipeline.
+**Point it at your own SOPs** — PDF or Markdown; see [Running it on your own
+SOPs](#running-it-on-your-own-sops). A 42-document demo corpus ships in
+`examples/mock_corpus/` (a fictional sterile fill-finish site) purely so the install can
+be self-tested and the capabilities demonstrated before real documents are involved.
+
+Runs fully offline. No API key required.
 
 ## Two levels of output
 
@@ -58,49 +62,56 @@ Each maps to a "Proven Capabilities" slide in the deck (Phase 4 = training, slid
 ## Quick start
 
 ```bash
-git clone <your-repo-url> && cd "SOP Project"
+git clone https://github.com/angelbenitezmd/sop-quality-pipeline.git
+cd sop-quality-pipeline
 python3 -m venv .venv && source .venv/bin/activate   # optional but recommended
 pip install -r requirements.txt
 
-python3 -m sop_pipeline.cli list          # show discovered modules
-python3 -m sop_pipeline.cli run           # run all 13 + build the dashboard
-python3 -m sop_pipeline.cli run --module 05   # run just the regulatory audit
-open output/report/index.html             # the results dashboard
+python3 -m sop_pipeline.cli verify        # self-test the install on the demo corpus
 ```
 
-Requires Python 3.10+. Runs fully offline — no API key and no network access needed.
-`output/` is generated and gitignored; every artifact is rebuilt by `run`.
+`verify` runs all 13 capabilities against the bundled demo corpus. If it prints
+*"the install is good"*, your environment is sound — check that **before** trusting
+the pipeline on real regulated documents.
+
+Requires Python 3.10+. Runs fully offline: no API key, no network access.
+
+## Running it on your own SOPs
+
+**1 — Configure the site.** Edit [`config/site_config.json`](config/site_config.json):
+the regulatory version table (drives the citation-currency audit), the expected
+coverage bands (drives the gap analysis), and your department codes. This is the one
+file you must review before a real run — the defaults describe a fictional site.
+
+**2 — Load your documents.** From PDFs (digital-native, exported from a DMS/Word):
+
+```bash
+python3 -m sop_pipeline.ingest --pdf-dir /path/to/pdfs --out data/sops
+```
+
+Check `data/sops/ingest_report.json` — anything marked `needs_review` should get a
+human look before you trust its analysis. Already have Markdown? Drop it straight
+into `data/sops/`.
+
+**3 — Run.**
+
+```bash
+python3 -m sop_pipeline.cli run           # all 13 + both reports
+python3 -m sop_pipeline.cli run --module 05   # just the regulatory audit
+open output/report/index.html             # corpus dashboard
+open output/sops/index.html               # per-SOP assessments, worst first
+```
+
+`data/sops/` is where your corpus goes and is **gitignored wholesale** — client
+documents cannot be committed by accident. While it is empty the pipeline falls back
+to the demo corpus, so a fresh clone runs immediately; the moment you add a file
+there, your corpus takes over. `output/` is generated and rebuilt by every run.
 
 ## Running on another machine
 
 The code contains no absolute paths — all paths derive from `PROJECT_ROOT` in
 `sop_pipeline/core/corpus.py`, so a clone runs anywhere `requirements.txt` is installed.
 Charts render headless (matplotlib `Agg`), so it works over SSH and in CI.
-
-## Using a real SOP corpus
-
-The 42 SOPs in `data/sops/` are **mock data** written to exercise the 13 capabilities.
-To run against real documents:
-
-1. Convert the real SOPs to Markdown with YAML frontmatter matching the format in
-   `data/sops/SOP-DOC-001.md` (required keys: `sop_id`, `title`, `department_code`;
-   recommended: `version`, `effective_date`, `next_review`, `owner`, `language`).
-   Cross-references and regulatory citations are extracted from the **body text**, so
-   they only need to appear in prose — no tagging required.
-2. Put them in their own directory (e.g. `data/sops_real/`, which is gitignored) and point
-   the pipeline at it:
-   ```bash
-   python3 -m sop_pipeline.cli run --sops data/sops_real
-   ```
-3. Review `data/corpus_manifest.json`. It supplies two things the pipeline reads as
-   configuration rather than ground truth: `regulatory_current_versions` (the version
-   currency table used by the regulatory audit) and `coverage_requirements` (expected SOP
-   counts per topic area). Update both for the real site. The `sops` array is mock-corpus
-   ground truth used for validation and can be ignored or emptied.
-
-**Do not commit client SOPs.** `data/sops_real/` and `data/sops_client/` are gitignored.
-
-Known gaps for real-world use: ingest is Markdown-only (PDF/DOCX conversion is not built in).
 
 ## Optional: enabling the LLM rewrite path (`m06`)
 
@@ -127,24 +138,21 @@ that **actually ran**. A silent fallback is never recorded as an LLM rewrite.
 ## Layout
 
 ```
-data/
-  corpus_manifest.json     # ground truth: every SOP + its seeded defects
-  sops/*.md                # 42 mock SOPs (Markdown + YAML frontmatter)
+config/site_config.json    # EDIT THIS — regulatory versions, coverage bands, departments
+data/sops/                 # YOUR corpus goes here (gitignored; empty -> demo is used)
+examples/mock_corpus/      # bundled 42-SOP demo corpus + its ground_truth.json
 sop_pipeline/
-  core/corpus.py           # SOP/Corpus data model + loader + section/sentence parsing
-  core/lexicon.py          # ambiguity, passive-voice, nominalization, style profiles
-  core/regkb.py            # regulatory citation extraction + version currency KB
-  core/viz.py              # shared matplotlib palette/helpers
+  core/corpus.py           # SOP/Corpus model, loader, section + sentence parsing
+  core/lexicon.py          # ambiguity, passive voice, nominalization, style profiles
+  core/regkb.py            # regulatory citation extraction + version currency
+  core/viz.py              # shared chart palette
+  ingest.py                # PDF -> Markdown conversion + quality report
   modules/m01..m13.py      # the 13 capabilities
-  report.py                # corpus dashboard renderer
+  report.py                # corpus dashboard
   sop_report.py            # per-SOP assessment dossiers
-  cli.py                   # orchestrator
-output/
-  mNN_*/…                  # per-module corpus artifacts + summary.json
-  mNN_*/sops/…             # per-module, per-SOP artifacts (radar charts, flowcharts, packages)
-  report/index.html        # corpus dashboard
-  sops/index.html          # per-SOP index (worst-first remediation queue)
-  sops/<SOP-ID>.html       # one assessment dossier per document
+  cli.py                   # orchestrator (run / verify / list / ingest)
+tools/make_test_pdfs.py    # renders the demo corpus to realistic SOP PDFs (test fixture)
+output/                    # generated: dashboards, per-SOP dossiers, charts, CSVs
 ```
 
 ## Seeded defects (what the pipeline is designed to catch)

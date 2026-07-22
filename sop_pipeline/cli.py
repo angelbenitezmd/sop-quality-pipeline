@@ -131,6 +131,38 @@ def _merge_with_saved(fresh: list[dict]) -> list[dict]:
     return ordered
 
 
+def cmd_verify(args) -> int:
+    """Self-test: run every module over the bundled demo corpus.
+
+    The point is to prove the install works — dependencies present, all 13
+    capabilities executing — before anyone trusts the pipeline on real,
+    regulated documents.
+    """
+    from .core.corpus import EXAMPLE_SOP_DIR
+
+    if not EXAMPLE_SOP_DIR.is_dir() or not any(EXAMPLE_SOP_DIR.glob("*.md")):
+        print(f"Demo corpus not found at {EXAMPLE_SOP_DIR}")
+        return 1
+    corpus = load_corpus(EXAMPLE_SOP_DIR)
+    print(f"Self-test on the bundled demo corpus ({len(corpus)} SOPs)\n" + "-" * 60)
+    failures = []
+    for stem in discover_modules():
+        r = run_module(stem, corpus, quiet=True)
+        ok = not r.get("_error")
+        print(f"  [{'ok' if ok else 'FAIL':4s}] {stem}")
+        if not ok:
+            failures.append((stem, r["_error"]))
+    print("-" * 60)
+    if failures:
+        print(f"{len(failures)} module(s) failed:")
+        for stem, err in failures:
+            print(f"  {stem}: {err}")
+        return 1
+    print(f"All {len(discover_modules())} capabilities ran. The install is good.")
+    print("Next: put your SOPs in data/sops/ (or use `ingest` for PDFs), then `run`.")
+    return 0
+
+
 def cmd_list(args) -> int:
     stems = discover_modules()
     print(f"{len(stems)} module(s) discovered under {MODULES_DIR}:")
@@ -148,6 +180,8 @@ def main(argv=None) -> int:
                    help="directory of SOP .md files to analyze (default: data/sops)")
     r.add_argument("--quiet", action="store_true", help="suppress tracebacks")
     r.set_defaults(func=cmd_run)
+    v = sub.add_parser("verify", help="self-test the install against the bundled demo corpus")
+    v.set_defaults(func=cmd_verify)
     l = sub.add_parser("list", help="list discovered modules")
     l.set_defaults(func=cmd_list)
     args = ap.parse_args(argv)

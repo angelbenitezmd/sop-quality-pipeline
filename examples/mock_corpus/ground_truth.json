@@ -1,0 +1,1269 @@
+{
+  "_comment": "Ground truth for the bundled MOCK corpus only — the defects deliberately seeded into examples/mock_corpus so the pipeline's detection can be verified. Real corpora have no equivalent; the pipeline works fine without this file.",
+  "client": "Meridian Pharmaceuticals",
+  "description": "Mock SOP corpus for a sterile injectable fill-finish site (vials + pre-filled syringes). All content is fictional and for pipeline testing only.",
+  "cross_reference_ground_truth": {
+    "hub": "SOP-DOC-001",
+    "cycle": [
+      "SOP-QC-002",
+      "SOP-MFG-004",
+      "SOP-ENV-001",
+      "SOP-QC-002"
+    ],
+    "orphans": [
+      "SOP-WHS-003",
+      "SOP-ENV-004"
+    ],
+    "broken_targets": [
+      "SOP-CLN-099",
+      "SOP-VAL-001"
+    ]
+  },
+  "near_duplicate_groups": [
+    {
+      "group": "room_cleaning",
+      "members": [
+        "SOP-CLN-003",
+        "SOP-CLN-004",
+        "SOP-CLN-005"
+      ],
+      "expected_similarity": "0.88-0.96"
+    },
+    {
+      "group": "autoclave",
+      "members": [
+        "SOP-EQP-002",
+        "SOP-EQP-003"
+      ],
+      "expected_similarity": "0.90-0.97"
+    },
+    {
+      "group": "filling_line",
+      "members": [
+        "SOP-MFG-002",
+        "SOP-MFG-003"
+      ],
+      "expected_similarity": "0.88-0.95"
+    },
+    {
+      "group": "labeling",
+      "members": [
+        "SOP-PKG-002",
+        "SOP-PKG-003"
+      ],
+      "expected_similarity": "0.85-0.93"
+    }
+  ],
+  "sops": [
+    {
+      "sop_id": "SOP-CLN-001",
+      "title": "Cleaning and Disinfection of ISO 7 Cleanrooms",
+      "department": "CLN",
+      "version": "4.1",
+      "effective_date": "2023-11-15",
+      "next_review": "2025-11-15",
+      "owner": "J. Whitfield, Manager, Contamination Control",
+      "complexity": "complex",
+      "style_profile": "cln_caps_shall",
+      "cross_refs": [
+        "SOP-CLN-002",
+        "SOP-ENV-001",
+        "SOP-DOC-001"
+      ],
+      "reg_refs": [
+        {
+          "citation": "21 CFR 211.67",
+          "as_written": "21 CFR 211.67",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [
+        "ambiguity_heavy",
+        "passive_voice",
+        "long_sentences"
+      ],
+      "has_es_variant": true,
+      "notes": "Room cleaning with IPA 70% and sporicidal rotation. ES variant introduces IPA 70%->60% discrepancy and decimal-comma formatting."
+    },
+    {
+      "sop_id": "SOP-CLN-002",
+      "title": "Clean-In-Place (CIP) of Product Contact Vessels",
+      "department": "CLN",
+      "version": "3.4",
+      "effective_date": "2024-02-20",
+      "next_review": "2026-02-20",
+      "owner": "J. Whitfield, Manager, Contamination Control",
+      "complexity": "complex",
+      "style_profile": "cln_caps_shall",
+      "cross_refs": [
+        "SOP-EQP-004",
+        "SOP-QC-004",
+        "SOP-DOC-001"
+      ],
+      "reg_refs": [
+        {
+          "citation": "ISPE Baseline Guide: CIP",
+          "as_written": "ISPE Baseline Guide: CIP (2nd Ed, 2020)",
+          "status": "current"
+        },
+        {
+          "citation": "PDA TR-70",
+          "as_written": "PDA TR-70",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [
+        "long_sentences"
+      ],
+      "notes": "CIP cycle for mixing vessels and transfer lines; conductivity/TOC acceptance limits."
+    },
+    {
+      "sop_id": "SOP-CLN-003",
+      "title": "Manual Cleaning of Cleanroom A (Filling Suite)",
+      "department": "CLN",
+      "version": "2.2",
+      "effective_date": "2022-06-10",
+      "next_review": "2024-06-10",
+      "owner": "R. Okafor, Supervisor, Sanitization",
+      "complexity": "complex",
+      "style_profile": "cln_caps_shall",
+      "cross_refs": [
+        "SOP-CLN-001",
+        "SOP-ENV-001"
+      ],
+      "reg_refs": [
+        {
+          "citation": "EU GMP Annex 15",
+          "as_written": "EU GMP Annex 15 (2001 revision)",
+          "status": "outdated",
+          "should_be": "2015 revision"
+        }
+      ],
+      "seeded_defects": [
+        "ambiguity_heavy",
+        "passive_voice",
+        "near_duplicate",
+        "outdated_reg",
+        "overdue_review"
+      ],
+      "near_dup_group": "room_cleaning",
+      "notes": "Room-cleaning triplet member 1 (Cleanroom A). ~90% identical to CLN-004/005 with room name/grid swapped. Cites outdated Annex 15."
+    },
+    {
+      "sop_id": "SOP-CLN-004",
+      "title": "Manual Cleaning of Cleanroom B (Inspection Suite)",
+      "department": "CLN",
+      "version": "2.1",
+      "effective_date": "2022-06-10",
+      "next_review": "2024-06-10",
+      "owner": "R. Okafor, Supervisor, Sanitization",
+      "complexity": "complex",
+      "style_profile": "cln_caps_shall",
+      "cross_refs": [
+        "SOP-CLN-001",
+        "SOP-ENV-001"
+      ],
+      "reg_refs": [
+        {
+          "citation": "21 CFR 211.67",
+          "as_written": "21 CFR 211.67",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [
+        "ambiguity_heavy",
+        "passive_voice",
+        "near_duplicate",
+        "overdue_review"
+      ],
+      "near_dup_group": "room_cleaning",
+      "notes": "Room-cleaning triplet member 2 (Cleanroom B). Near-identical to CLN-003 with room B substitutions."
+    },
+    {
+      "sop_id": "SOP-CLN-005",
+      "title": "Manual Cleaning of Cleanroom C (Gowning & Airlock)",
+      "department": "CLN",
+      "version": "2.0",
+      "effective_date": "2022-07-01",
+      "next_review": "2024-07-01",
+      "owner": "R. Okafor, Supervisor, Sanitization",
+      "complexity": "complex",
+      "style_profile": "cln_caps_shall",
+      "cross_refs": [
+        "SOP-CLN-001",
+        "SOP-ENV-002"
+      ],
+      "reg_refs": [
+        {
+          "citation": "21 CFR 211.67",
+          "as_written": "21 CFR 211.67",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [
+        "ambiguity_heavy",
+        "passive_voice",
+        "near_duplicate",
+        "overdue_review"
+      ],
+      "near_dup_group": "room_cleaning",
+      "notes": "Room-cleaning triplet member 3 (Cleanroom C). Near-identical to CLN-003/004."
+    },
+    {
+      "sop_id": "SOP-CLN-006",
+      "title": "Sporicidal Agent Rotation and Preparation",
+      "department": "CLN",
+      "version": "1.3",
+      "effective_date": "2024-05-05",
+      "next_review": "2026-05-05",
+      "owner": "J. Whitfield, Manager, Contamination Control",
+      "complexity": "simple",
+      "style_profile": "cln_caps_shall",
+      "cross_refs": [
+        "SOP-CLN-001",
+        "SOP-ENV-001"
+      ],
+      "reg_refs": [
+        {
+          "citation": "21 CFR 211.113",
+          "as_written": "21 CFR 211.113",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [],
+      "notes": "Preparation and rotation schedule of sporicides; relatively clean, readable SOP."
+    },
+    {
+      "sop_id": "SOP-CLN-007",
+      "title": "Cleaning Validation Sampling and Swab Recovery",
+      "department": "CLN",
+      "version": "2.5",
+      "effective_date": "2024-01-12",
+      "next_review": "2026-01-12",
+      "owner": "M. Delacroix, Validation Lead",
+      "complexity": "very_complex",
+      "style_profile": "cln_caps_shall",
+      "cross_refs": [
+        "SOP-CLN-002",
+        "SOP-QC-004",
+        "SOP-CLN-099",
+        "SOP-DOC-001"
+      ],
+      "reg_refs": [
+        {
+          "citation": "PDA TR-70",
+          "as_written": "PDA TR-70",
+          "status": "current"
+        },
+        {
+          "citation": "EU GMP Annex 15",
+          "as_written": "EU GMP Annex 15 (2001 revision)",
+          "status": "outdated",
+          "should_be": "2015 revision"
+        }
+      ],
+      "seeded_defects": [
+        "long_sentences",
+        "passive_voice",
+        "broken_reference",
+        "outdated_reg",
+        "ambiguity_heavy"
+      ],
+      "notes": "References SOP-CLN-099 which does NOT exist (broken cross-reference). Very high reading grade."
+    },
+    {
+      "sop_id": "SOP-CLN-008",
+      "title": "Disinfectant Efficacy Qualification Program",
+      "department": "CLN",
+      "version": "1.1",
+      "effective_date": "2023-09-18",
+      "next_review": "2025-09-18",
+      "owner": "M. Delacroix, Validation Lead",
+      "complexity": "very_complex",
+      "style_profile": "cln_caps_shall",
+      "cross_refs": [
+        "SOP-CLN-006",
+        "SOP-QC-001",
+        "SOP-ENV-001"
+      ],
+      "reg_refs": [
+        {
+          "citation": "USP <1058>",
+          "as_written": "USP <1058>",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [
+        "long_sentences",
+        "nominalization",
+        "ambiguity_heavy"
+      ],
+      "notes": "Disinfectant efficacy testing; dense academic prose, very high grade level."
+    },
+    {
+      "sop_id": "SOP-EQP-001",
+      "title": "Operation and Qualification of the Vial Filling Machine",
+      "department": "EQP",
+      "version": "5.0",
+      "effective_date": "2024-03-01",
+      "next_review": "2026-03-01",
+      "owner": "T. Nakamura, Engineering Manager",
+      "complexity": "complex",
+      "style_profile": "eqp_step_should",
+      "cross_refs": [
+        "SOP-MFG-001",
+        "SOP-EQP-005",
+        "SOP-DOC-001"
+      ],
+      "reg_refs": [
+        {
+          "citation": "USP <1058>",
+          "as_written": "USP <1058>",
+          "status": "current"
+        },
+        {
+          "citation": "GAMP 5",
+          "as_written": "GAMP 5 (2nd Ed, 2022)",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [
+        "long_sentences"
+      ],
+      "notes": "Vial filling machine setup, operation, IQ/OQ/PQ references."
+    },
+    {
+      "sop_id": "SOP-EQP-002",
+      "title": "Operation of Autoclave A (Sterilizer Load Configuration)",
+      "department": "EQP",
+      "version": "3.2",
+      "effective_date": "2023-08-22",
+      "next_review": "2025-08-22",
+      "owner": "T. Nakamura, Engineering Manager",
+      "complexity": "complex",
+      "style_profile": "eqp_step_should",
+      "cross_refs": [
+        "SOP-QC-005",
+        "SOP-EQP-003"
+      ],
+      "reg_refs": [
+        {
+          "citation": "21 CFR 211.68",
+          "as_written": "21 CFR 211.68",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [
+        "near_duplicate",
+        "passive_voice"
+      ],
+      "near_dup_group": "autoclave",
+      "notes": "Autoclave A operation. Near-identical to EQP-003 (Autoclave B) with unit ID swapped."
+    },
+    {
+      "sop_id": "SOP-EQP-003",
+      "title": "Operation of Autoclave B (Sterilizer Load Configuration)",
+      "department": "EQP",
+      "version": "3.1",
+      "effective_date": "2023-08-22",
+      "next_review": "2025-08-22",
+      "owner": "T. Nakamura, Engineering Manager",
+      "complexity": "complex",
+      "style_profile": "eqp_step_should",
+      "cross_refs": [
+        "SOP-QC-005",
+        "SOP-EQP-002"
+      ],
+      "reg_refs": [
+        {
+          "citation": "21 CFR 211.68",
+          "as_written": "21 CFR 211.68",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [
+        "near_duplicate",
+        "passive_voice"
+      ],
+      "near_dup_group": "autoclave",
+      "notes": "Autoclave B operation. Near-identical to EQP-002."
+    },
+    {
+      "sop_id": "SOP-EQP-004",
+      "title": "Operation of the Water-for-Injection (WFI) Generation System",
+      "department": "EQP",
+      "version": "4.3",
+      "effective_date": "2024-04-10",
+      "next_review": "2026-04-10",
+      "owner": "T. Nakamura, Engineering Manager",
+      "complexity": "complex",
+      "style_profile": "eqp_step_should",
+      "cross_refs": [
+        "SOP-QC-004",
+        "SOP-CLN-002",
+        "SOP-DOC-001"
+      ],
+      "reg_refs": [
+        {
+          "citation": "21 CFR 211.67",
+          "as_written": "21 CFR 211.67",
+          "status": "current"
+        },
+        {
+          "citation": "USP <1058>",
+          "as_written": "USP <1058>",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [
+        "long_sentences",
+        "ambiguity_heavy"
+      ],
+      "notes": "WFI still and distribution loop operation, sanitization, sampling points."
+    },
+    {
+      "sop_id": "SOP-EQP-005",
+      "title": "Setup and Operation of the Lyophilizer (Freeze-Dryer)",
+      "department": "EQP",
+      "version": "2.4",
+      "effective_date": "2023-12-01",
+      "next_review": "2025-12-01",
+      "owner": "S. Petrov, Senior Process Engineer",
+      "complexity": "very_complex",
+      "style_profile": "eqp_step_should",
+      "cross_refs": [
+        "SOP-MFG-005",
+        "SOP-EQP-001"
+      ],
+      "reg_refs": [
+        {
+          "citation": "GAMP 5",
+          "as_written": "GAMP 5 (1st Ed)",
+          "status": "outdated",
+          "should_be": "2nd Ed (2022)"
+        }
+      ],
+      "seeded_defects": [
+        "very_long_sentences",
+        "nominalization",
+        "outdated_reg"
+      ],
+      "notes": "Lyophilization cycle. Cites GAMP 5 1st Ed (outdated). Extremely dense."
+    },
+    {
+      "sop_id": "SOP-EQP-006",
+      "title": "Preventive Maintenance of Filling Line Isolators",
+      "department": "EQP",
+      "version": "1.2",
+      "effective_date": "2024-06-15",
+      "next_review": "2026-06-15",
+      "owner": "S. Petrov, Senior Process Engineer",
+      "complexity": "simple",
+      "style_profile": "eqp_step_should",
+      "cross_refs": [
+        "SOP-EQP-001",
+        "SOP-ENV-001"
+      ],
+      "reg_refs": [
+        {
+          "citation": "EU GMP Annex 1",
+          "as_written": "EU GMP Annex 1 (2022 revision)",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [],
+      "notes": "Isolator PM; glove integrity, decontamination cycle. Clean readable SOP citing CURRENT Annex 1."
+    },
+    {
+      "sop_id": "SOP-QC-001",
+      "title": "HPLC Assay for Drug Product Potency",
+      "department": "QC",
+      "version": "6.1",
+      "effective_date": "2023-10-30",
+      "next_review": "2025-10-30",
+      "owner": "L. Fernandes, QC Laboratory Manager",
+      "complexity": "very_complex",
+      "style_profile": "qc_roman_nominal",
+      "cross_refs": [
+        "SOP-QC-006",
+        "SOP-DOC-001"
+      ],
+      "reg_refs": [
+        {
+          "citation": "ICH Q2(R2)",
+          "as_written": "ICH Q2(R1)",
+          "status": "outdated",
+          "should_be": "Q2(R2)"
+        },
+        {
+          "citation": "21 CFR 211.165",
+          "as_written": "21 CFR 211.165",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [
+        "nominalization",
+        "very_long_sentences",
+        "outdated_reg",
+        "ambiguity_heavy"
+      ],
+      "notes": "HPLC potency assay. Cites ICH Q2(R1) — outdated, superseded by Q2(R2)."
+    },
+    {
+      "sop_id": "SOP-QC-002",
+      "title": "Sterility Testing by Membrane Filtration",
+      "department": "QC",
+      "version": "4.0",
+      "effective_date": "2024-01-25",
+      "next_review": "2026-01-25",
+      "owner": "L. Fernandes, QC Laboratory Manager",
+      "complexity": "complex",
+      "style_profile": "qc_roman_nominal",
+      "cross_refs": [
+        "SOP-MFG-004",
+        "SOP-QC-005"
+      ],
+      "reg_refs": [
+        {
+          "citation": "USP <71>",
+          "as_written": "USP <71>",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [
+        "cycle_member",
+        "nominalization"
+      ],
+      "notes": "Sterility test. Part of dependency cycle: QC-002 -> MFG-004 -> ENV-001 -> QC-002."
+    },
+    {
+      "sop_id": "SOP-QC-003",
+      "title": "Bacterial Endotoxin Testing (LAL Kinetic Chromogenic)",
+      "department": "QC",
+      "version": "3.3",
+      "effective_date": "2023-07-14",
+      "next_review": "2025-07-14",
+      "owner": "L. Fernandes, QC Laboratory Manager",
+      "complexity": "very_complex",
+      "style_profile": "qc_roman_nominal",
+      "cross_refs": [
+        "SOP-QC-006",
+        "SOP-DOC-001"
+      ],
+      "reg_refs": [
+        {
+          "citation": "ICH Q9(R1)",
+          "as_written": "ICH Q9",
+          "status": "outdated",
+          "should_be": "Q9(R1)"
+        },
+        {
+          "citation": "USP <85>",
+          "as_written": "USP <85>",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [
+        "nominalization",
+        "very_long_sentences",
+        "outdated_reg"
+      ],
+      "notes": "Endotoxin LAL test. Cites ICH Q9 — outdated, superseded by Q9(R1)."
+    },
+    {
+      "sop_id": "SOP-QC-004",
+      "title": "Total Organic Carbon (TOC) and Conductivity Testing of WFI",
+      "department": "QC",
+      "version": "2.6",
+      "effective_date": "2024-02-08",
+      "next_review": "2026-02-08",
+      "owner": "A. Bianchi, QC Chemist II",
+      "complexity": "complex",
+      "style_profile": "qc_roman_nominal",
+      "cross_refs": [
+        "SOP-EQP-004",
+        "SOP-DOC-001"
+      ],
+      "reg_refs": [
+        {
+          "citation": "USP <1058>",
+          "as_written": "USP <1058>",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [
+        "nominalization"
+      ],
+      "notes": "TOC/conductivity for water system. Moderate complexity."
+    },
+    {
+      "sop_id": "SOP-QC-005",
+      "title": "Biological Indicator (BI) Incubation and Readout",
+      "department": "QC",
+      "version": "1.4",
+      "effective_date": "2024-05-20",
+      "next_review": "2026-05-20",
+      "owner": "A. Bianchi, QC Chemist II",
+      "complexity": "simple",
+      "style_profile": "qc_roman_nominal",
+      "cross_refs": [
+        "SOP-EQP-002",
+        "SOP-QC-002"
+      ],
+      "reg_refs": [
+        {
+          "citation": "USP <71>",
+          "as_written": "USP <71>",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [],
+      "notes": "BI incubation for sterilization verification. Clean, readable."
+    },
+    {
+      "sop_id": "SOP-QC-006",
+      "title": "Analytical Balance Calibration and Verification",
+      "department": "QC",
+      "version": "3.0",
+      "effective_date": "2023-11-02",
+      "next_review": "2025-11-02",
+      "owner": "A. Bianchi, QC Chemist II",
+      "complexity": "simple",
+      "style_profile": "qc_roman_nominal",
+      "cross_refs": [
+        "SOP-DOC-001"
+      ],
+      "reg_refs": [
+        {
+          "citation": "USP <1058>",
+          "as_written": "USP <1058>",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [],
+      "notes": "Balance calibration. Simple, well-written reference SOP."
+    },
+    {
+      "sop_id": "SOP-MFG-001",
+      "title": "Aseptic Filling of Injectable Vials",
+      "department": "MFG",
+      "version": "5.2",
+      "effective_date": "2024-03-15",
+      "next_review": "2026-03-15",
+      "owner": "D. Sørensen, Manufacturing Manager",
+      "complexity": "complex",
+      "style_profile": "mfg_future_operator",
+      "cross_refs": [
+        "SOP-EQP-001",
+        "SOP-ENV-001",
+        "SOP-QC-002",
+        "SOP-DOC-001"
+      ],
+      "reg_refs": [
+        {
+          "citation": "EU GMP Annex 1",
+          "as_written": "EU GMP Annex 1 (2022 revision)",
+          "status": "current"
+        },
+        {
+          "citation": "PDA TR-60",
+          "as_written": "PDA TR-60",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [
+        "passive_voice",
+        "ambiguity_heavy"
+      ],
+      "has_es_variant": true,
+      "notes": "Core aseptic vial filling. ES variant OMITS the safety warning section and has fewer sections (section-count mismatch)."
+    },
+    {
+      "sop_id": "SOP-MFG-002",
+      "title": "Operation of Filling Line 1 (Vial Line)",
+      "department": "MFG",
+      "version": "4.1",
+      "effective_date": "2023-09-05",
+      "next_review": "2025-09-05",
+      "owner": "D. Sørensen, Manufacturing Manager",
+      "complexity": "complex",
+      "style_profile": "mfg_future_operator",
+      "cross_refs": [
+        "SOP-MFG-001",
+        "SOP-EQP-001"
+      ],
+      "reg_refs": [
+        {
+          "citation": "EU GMP Annex 1",
+          "as_written": "EU GMP Annex 1 (2022 revision)",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [
+        "near_duplicate",
+        "passive_voice"
+      ],
+      "near_dup_group": "filling_line",
+      "notes": "Filling Line 1. Near-identical to MFG-003 (Line 2) with line ID/room swapped."
+    },
+    {
+      "sop_id": "SOP-MFG-003",
+      "title": "Operation of Filling Line 2 (Syringe Line)",
+      "department": "MFG",
+      "version": "4.0",
+      "effective_date": "2023-09-05",
+      "next_review": "2025-09-05",
+      "owner": "D. Sørensen, Manufacturing Manager",
+      "complexity": "complex",
+      "style_profile": "mfg_future_operator",
+      "cross_refs": [
+        "SOP-MFG-001",
+        "SOP-EQP-001"
+      ],
+      "reg_refs": [
+        {
+          "citation": "EU GMP Annex 1",
+          "as_written": "EU GMP Annex 1 (2022 revision)",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [
+        "near_duplicate",
+        "passive_voice"
+      ],
+      "near_dup_group": "filling_line",
+      "notes": "Filling Line 2. Near-identical to MFG-002."
+    },
+    {
+      "sop_id": "SOP-MFG-004",
+      "title": "Aseptic Process Simulation (Media Fill)",
+      "department": "MFG",
+      "version": "3.1",
+      "effective_date": "2024-04-22",
+      "next_review": "2026-04-22",
+      "owner": "D. Sørensen, Manufacturing Manager",
+      "complexity": "very_complex",
+      "style_profile": "mfg_future_operator",
+      "cross_refs": [
+        "SOP-ENV-001",
+        "SOP-QC-002",
+        "SOP-MFG-001"
+      ],
+      "reg_refs": [
+        {
+          "citation": "EU GMP Annex 1",
+          "as_written": "EU GMP Annex 1 (2022 revision)",
+          "status": "current"
+        },
+        {
+          "citation": "ISO 13408-1",
+          "as_written": "ISO 13408-1",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [
+        "cycle_member",
+        "very_long_sentences",
+        "nominalization"
+      ],
+      "notes": "Media fill. Cycle member: MFG-004 -> ENV-001 (references it), and is referenced BY QC-002."
+    },
+    {
+      "sop_id": "SOP-MFG-005",
+      "title": "Stopper Processing and Sterilization",
+      "department": "MFG",
+      "version": "2.3",
+      "effective_date": "2023-12-11",
+      "next_review": "2025-12-11",
+      "owner": "K. Adeyemi, Manufacturing Supervisor",
+      "complexity": "complex",
+      "style_profile": "mfg_future_operator",
+      "cross_refs": [
+        "SOP-EQP-002",
+        "SOP-EQP-005"
+      ],
+      "reg_refs": [
+        {
+          "citation": "EU GMP Annex 1",
+          "as_written": "EU GMP Annex 1 (2008 revision)",
+          "status": "outdated",
+          "should_be": "2022 revision"
+        }
+      ],
+      "seeded_defects": [
+        "passive_voice",
+        "outdated_reg",
+        "ambiguity_heavy"
+      ],
+      "notes": "Stopper washing/siliconization/sterilization. Cites OUTDATED Annex 1 (2008)."
+    },
+    {
+      "sop_id": "SOP-MFG-006",
+      "title": "In-Process Controls During Aseptic Filling",
+      "department": "MFG",
+      "version": "1.5",
+      "effective_date": "2024-05-30",
+      "next_review": "2026-05-30",
+      "owner": "K. Adeyemi, Manufacturing Supervisor",
+      "complexity": "complex",
+      "style_profile": "mfg_future_operator",
+      "cross_refs": [
+        "SOP-MFG-001",
+        "SOP-QC-001",
+        "SOP-VAL-001"
+      ],
+      "reg_refs": [
+        {
+          "citation": "21 CFR 211.110",
+          "as_written": "21 CFR 211.110",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [
+        "broken_reference",
+        "passive_voice"
+      ],
+      "notes": "In-process checks (fill weight, integrity). References SOP-VAL-001 which does NOT exist (broken cross-reference)."
+    },
+    {
+      "sop_id": "SOP-ENV-001",
+      "title": "Environmental Monitoring of Aseptic Processing Areas",
+      "department": "ENV",
+      "version": "4.2",
+      "effective_date": "2024-02-28",
+      "next_review": "2026-02-28",
+      "owner": "P. Novak, EM Program Lead",
+      "complexity": "simple",
+      "style_profile": "env_doc_standard",
+      "cross_refs": [
+        "SOP-QC-002",
+        "SOP-CLN-001",
+        "SOP-DOC-001"
+      ],
+      "reg_refs": [
+        {
+          "citation": "EU GMP Annex 1",
+          "as_written": "EU GMP Annex 1 (2022 revision)",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [
+        "cycle_member"
+      ],
+      "notes": "EM program. HOUSE STYLE reference. Cycle member: ENV-001 -> QC-002 (references it), referenced BY MFG-004."
+    },
+    {
+      "sop_id": "SOP-ENV-002",
+      "title": "Cleanroom Classification and Recertification",
+      "department": "ENV",
+      "version": "2.1",
+      "effective_date": "2023-06-19",
+      "next_review": "2025-06-19",
+      "owner": "P. Novak, EM Program Lead",
+      "complexity": "simple",
+      "style_profile": "env_doc_standard",
+      "cross_refs": [
+        "SOP-ENV-001",
+        "SOP-DOC-001"
+      ],
+      "reg_refs": [
+        {
+          "citation": "ISO 14644-1",
+          "as_written": "ISO 14644-1:1999",
+          "status": "outdated",
+          "should_be": "2015"
+        }
+      ],
+      "seeded_defects": [
+        "outdated_reg"
+      ],
+      "notes": "Cleanroom classification. Cites ISO 14644-1:1999 — OUTDATED (superseded by 2015)."
+    },
+    {
+      "sop_id": "SOP-ENV-003",
+      "title": "Environmental Monitoring Excursion Investigation",
+      "department": "ENV",
+      "version": "1.3",
+      "effective_date": "2024-06-01",
+      "next_review": "2026-06-01",
+      "owner": "P. Novak, EM Program Lead",
+      "complexity": "simple",
+      "style_profile": "env_doc_standard",
+      "cross_refs": [
+        "SOP-ENV-001",
+        "SOP-QC-002",
+        "SOP-DOC-001"
+      ],
+      "reg_refs": [
+        {
+          "citation": "ICH Q9(R1)",
+          "as_written": "ICH Q9(R1)",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [],
+      "notes": "EM excursion handling. Clean house-style SOP citing CURRENT Q9(R1)."
+    },
+    {
+      "sop_id": "SOP-ENV-004",
+      "title": "Compressed Gas and Utility Point Monitoring",
+      "department": "ENV",
+      "version": "1.0",
+      "effective_date": "2024-04-05",
+      "next_review": "2026-04-05",
+      "owner": "P. Novak, EM Program Lead",
+      "complexity": "simple",
+      "style_profile": "env_doc_standard",
+      "cross_refs": [],
+      "reg_refs": [
+        {
+          "citation": "EU GMP Annex 1",
+          "as_written": "EU GMP Annex 1 (2022 revision)",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [
+        "orphan"
+      ],
+      "notes": "ORPHAN: references nothing and is referenced by nothing. Standalone utility monitoring."
+    },
+    {
+      "sop_id": "SOP-PKG-001",
+      "title": "Issuance and Reconciliation of Labels",
+      "department": "PKG",
+      "version": "3.2",
+      "effective_date": "2023-10-10",
+      "next_review": "2025-10-10",
+      "owner": "G. Rossi, Packaging Supervisor",
+      "complexity": "complex",
+      "style_profile": "pkg_bullet_responsible",
+      "cross_refs": [
+        "SOP-DOC-001",
+        "SOP-WHS-001"
+      ],
+      "reg_refs": [
+        {
+          "citation": "21 CFR 211.122",
+          "as_written": "21 CFR 211.122",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [
+        "ambiguity_heavy",
+        "passive_voice"
+      ],
+      "notes": "Label issuance/reconciliation. House-critical control."
+    },
+    {
+      "sop_id": "SOP-PKG-002",
+      "title": "Secondary Packaging and Labeling of Vial Product",
+      "department": "PKG",
+      "version": "2.4",
+      "effective_date": "2023-08-14",
+      "next_review": "2025-08-14",
+      "owner": "G. Rossi, Packaging Supervisor",
+      "complexity": "complex",
+      "style_profile": "pkg_bullet_responsible",
+      "cross_refs": [
+        "SOP-PKG-001",
+        "SOP-PKG-003"
+      ],
+      "reg_refs": [
+        {
+          "citation": "21 CFR 211.122",
+          "as_written": "21 CFR 211.122",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [
+        "near_duplicate",
+        "ambiguity_heavy"
+      ],
+      "near_dup_group": "labeling",
+      "notes": "Vial secondary packaging. Near-duplicate of PKG-003 (syringe) with product-form swaps."
+    },
+    {
+      "sop_id": "SOP-PKG-003",
+      "title": "Secondary Packaging and Labeling of Syringe Product",
+      "department": "PKG",
+      "version": "2.3",
+      "effective_date": "2023-08-14",
+      "next_review": "2025-08-14",
+      "owner": "G. Rossi, Packaging Supervisor",
+      "complexity": "complex",
+      "style_profile": "pkg_bullet_responsible",
+      "cross_refs": [
+        "SOP-PKG-001",
+        "SOP-PKG-002"
+      ],
+      "reg_refs": [
+        {
+          "citation": "21 CFR 211.122",
+          "as_written": "21 CFR 211.122",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [
+        "near_duplicate",
+        "ambiguity_heavy"
+      ],
+      "near_dup_group": "labeling",
+      "notes": "Syringe secondary packaging. Near-duplicate of PKG-002."
+    },
+    {
+      "sop_id": "SOP-PKG-004",
+      "title": "Serialization and Aggregation Data Handling",
+      "department": "PKG",
+      "version": "1.1",
+      "effective_date": "2024-05-12",
+      "next_review": "2026-05-12",
+      "owner": "G. Rossi, Packaging Supervisor",
+      "complexity": "simple",
+      "style_profile": "pkg_bullet_responsible",
+      "cross_refs": [
+        "SOP-PKG-001",
+        "SOP-DOC-002"
+      ],
+      "reg_refs": [
+        {
+          "citation": "21 CFR Part 11",
+          "as_written": "21 CFR Part 11",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [],
+      "notes": "Serialization/track-and-trace. Clean, readable."
+    },
+    {
+      "sop_id": "SOP-WHS-001",
+      "title": "Receipt and Quarantine of Incoming Materials",
+      "department": "WHS",
+      "version": "3.0",
+      "effective_date": "2023-11-20",
+      "next_review": "2025-11-20",
+      "owner": "B. Haddad, Warehouse Manager",
+      "complexity": "complex",
+      "style_profile": "whs_minimal",
+      "cross_refs": [
+        "SOP-QC-006",
+        "SOP-DOC-001"
+      ],
+      "reg_refs": [
+        {
+          "citation": "21 CFR 211.160",
+          "as_written": "21 CFR 211.160",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [
+        "ambiguity_heavy"
+      ],
+      "notes": "Incoming material receipt/quarantine/release."
+    },
+    {
+      "sop_id": "SOP-WHS-002",
+      "title": "Cold Chain Storage and Temperature Excursion Management",
+      "department": "WHS",
+      "version": "2.2",
+      "effective_date": "2024-01-30",
+      "next_review": "2026-01-30",
+      "owner": "B. Haddad, Warehouse Manager",
+      "complexity": "complex",
+      "style_profile": "whs_minimal",
+      "cross_refs": [
+        "SOP-WHS-001",
+        "SOP-DOC-001"
+      ],
+      "reg_refs": [
+        {
+          "citation": "21 CFR 211.142",
+          "as_written": "21 CFR 211.142",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [
+        "passive_voice",
+        "ambiguity_heavy"
+      ],
+      "notes": "Cold chain/temperature excursion. Note: no dedicated dispensing SOP exists in corpus (coverage gap)."
+    },
+    {
+      "sop_id": "SOP-WHS-003",
+      "title": "Waste Segregation and Disposal Logistics",
+      "department": "WHS",
+      "version": "1.0",
+      "effective_date": "2024-03-25",
+      "next_review": "2026-03-25",
+      "owner": "B. Haddad, Warehouse Manager",
+      "complexity": "simple",
+      "style_profile": "whs_minimal",
+      "cross_refs": [],
+      "reg_refs": [
+        {
+          "citation": "21 CFR 211.150",
+          "as_written": "21 CFR 211.150",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [
+        "orphan"
+      ],
+      "notes": "ORPHAN: references nothing and referenced by nothing."
+    },
+    {
+      "sop_id": "SOP-DOC-001",
+      "title": "Good Documentation Practices and Data Integrity",
+      "department": "DOC",
+      "version": "5.1",
+      "effective_date": "2024-02-14",
+      "next_review": "2026-02-14",
+      "owner": "C. Larsson, Director, Quality Systems",
+      "complexity": "simple",
+      "style_profile": "env_doc_standard",
+      "cross_refs": [
+        "SOP-DOC-002",
+        "SOP-DOC-003"
+      ],
+      "reg_refs": [
+        {
+          "citation": "21 CFR Part 11",
+          "as_written": "21 CFR Part 11",
+          "status": "current"
+        },
+        {
+          "citation": "ICH Q10",
+          "as_written": "ICH Q10",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [],
+      "notes": "HUB document. Referenced by 15+ SOPs across all departments. HOUSE STYLE reference. Clean, readable, ALCOA+."
+    },
+    {
+      "sop_id": "SOP-DOC-002",
+      "title": "SOP Authoring, Review, and Periodic Review Lifecycle",
+      "department": "DOC",
+      "version": "4.0",
+      "effective_date": "2023-12-05",
+      "next_review": "2025-12-05",
+      "owner": "C. Larsson, Director, Quality Systems",
+      "complexity": "simple",
+      "style_profile": "env_doc_standard",
+      "cross_refs": [
+        "SOP-DOC-001",
+        "SOP-DOC-003"
+      ],
+      "reg_refs": [
+        {
+          "citation": "ICH Q10",
+          "as_written": "ICH Q10",
+          "status": "current"
+        },
+        {
+          "citation": "21 CFR 211.100",
+          "as_written": "21 CFR 211.100",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [],
+      "notes": "Defines the house style standard and periodic-review cadence. House style reference."
+    },
+    {
+      "sop_id": "SOP-DOC-003",
+      "title": "Change Control and Deviation Management",
+      "department": "DOC",
+      "version": "4.5",
+      "effective_date": "2024-03-08",
+      "next_review": "2026-03-08",
+      "owner": "C. Larsson, Director, Quality Systems",
+      "complexity": "complex",
+      "style_profile": "env_doc_standard",
+      "cross_refs": [
+        "SOP-DOC-001",
+        "SOP-DOC-002"
+      ],
+      "reg_refs": [
+        {
+          "citation": "ICH Q9(R1)",
+          "as_written": "ICH Q9(R1)",
+          "status": "current"
+        },
+        {
+          "citation": "21 CFR 211.192",
+          "as_written": "21 CFR 211.192",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [
+        "nominalization"
+      ],
+      "notes": "Change control/deviation. Cites CURRENT Q9(R1)."
+    },
+    {
+      "sop_id": "SOP-CLN-001-ES",
+      "title": "Limpieza y Desinfección de Salas Limpias ISO 7",
+      "department": "CLN",
+      "version": "4.1",
+      "effective_date": "2023-11-15",
+      "next_review": "2025-11-15",
+      "owner": "J. Whitfield, Manager, Contamination Control",
+      "complexity": "complex",
+      "style_profile": "cln_caps_shall",
+      "language": "es",
+      "parent": "SOP-CLN-001",
+      "cross_refs": [
+        "SOP-CLN-002",
+        "SOP-ENV-001",
+        "SOP-DOC-001"
+      ],
+      "reg_refs": [
+        {
+          "citation": "21 CFR 211.67",
+          "as_written": "21 CFR 211.67",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [
+        "ml_value_discrepancy",
+        "ml_decimal_format"
+      ],
+      "notes": "SPANISH variant of CLN-001. DISCREPANCY: EN says IPA 70%, ES says IPA 60%. Uses decimal commas (0,5) vs EN decimal points (0.5). Same section count."
+    },
+    {
+      "sop_id": "SOP-MFG-001-ES",
+      "title": "Llenado Aséptico de Viales Inyectables",
+      "department": "MFG",
+      "version": "5.2",
+      "effective_date": "2024-03-15",
+      "next_review": "2026-03-15",
+      "owner": "D. Sørensen, Manufacturing Manager",
+      "complexity": "complex",
+      "style_profile": "mfg_future_operator",
+      "language": "es",
+      "parent": "SOP-MFG-001",
+      "cross_refs": [
+        "SOP-EQP-001",
+        "SOP-ENV-001",
+        "SOP-QC-002",
+        "SOP-DOC-001"
+      ],
+      "reg_refs": [
+        {
+          "citation": "EU GMP Annex 1",
+          "as_written": "EU GMP Annex 1 (2022 revision)",
+          "status": "current"
+        },
+        {
+          "citation": "PDA TR-60",
+          "as_written": "PDA TR-60",
+          "status": "current"
+        }
+      ],
+      "seeded_defects": [
+        "ml_missing_section",
+        "ml_section_count"
+      ],
+      "notes": "SPANISH variant of MFG-001. DISCREPANCY: OMITS the Safety Warnings section present in EN parent (section-count mismatch, missing critical warning)."
+    }
+  ]
+}

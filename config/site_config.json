@@ -1,0 +1,215 @@
+{
+  "_comment": "Site configuration for the SOP pipeline. EDIT THIS for your site. It is independent of any particular corpus: 'regulatory_current_versions' drives the m05 citation-currency audit, 'coverage_requirements' drives the m09 gap analysis, 'departments' maps SOP-id prefixes to names, and 'house_style_profile' is the style m11 measures conformance against.",
+  "site": "Meridian Pharmaceuticals — Building 4 (Sterile Fill-Finish)",
+  "house_style_profile": "env_doc_standard",
+  "departments": {
+    "CLN": "Cleaning & Sanitization",
+    "EQP": "Equipment Operations",
+    "QC": "Quality Control / Laboratory",
+    "MFG": "Manufacturing",
+    "ENV": "Environmental Monitoring",
+    "PKG": "Packaging & Labeling",
+    "WHS": "Warehouse & Materials",
+    "DOC": "Document Control & Quality Systems"
+  },
+  "coverage_requirements": {
+    "note": "Expected number of SOPs per regulatory topic area for a site of this type; used by m09_coverage.",
+    "topics": [
+      {
+        "topic": "Cleaning & Disinfection",
+        "dept": "CLN",
+        "expected_min": 3,
+        "expected_max": 4
+      },
+      {
+        "topic": "Equipment Operation & Qualification",
+        "dept": "EQP",
+        "expected_min": 5,
+        "expected_max": 7
+      },
+      {
+        "topic": "QC Analytical Testing",
+        "dept": "QC",
+        "expected_min": 5,
+        "expected_max": 7
+      },
+      {
+        "topic": "Aseptic Manufacturing",
+        "dept": "MFG",
+        "expected_min": 5,
+        "expected_max": 7
+      },
+      {
+        "topic": "Environmental Monitoring",
+        "dept": "ENV",
+        "expected_min": 4,
+        "expected_max": 6
+      },
+      {
+        "topic": "Packaging & Labeling",
+        "dept": "PKG",
+        "expected_min": 4,
+        "expected_max": 5
+      },
+      {
+        "topic": "Warehouse & Materials",
+        "dept": "WHS",
+        "expected_min": 5,
+        "expected_max": 7
+      },
+      {
+        "topic": "Document & Quality Systems",
+        "dept": "DOC",
+        "expected_min": 4,
+        "expected_max": 6
+      },
+      {
+        "topic": "Dispensing & Weighing",
+        "dept": "DSP",
+        "expected_min": 3,
+        "expected_max": 4
+      }
+    ]
+  },
+  "regulatory_current_versions": {
+    "note": "Ground-truth 'current' version table used by m05_regaudit. Format: canonical citation -> current designation.",
+    "21 CFR 211.67": {
+      "current": "current",
+      "topic": "Equipment cleaning and maintenance"
+    },
+    "21 CFR 211.68": {
+      "current": "current",
+      "topic": "Automatic, mechanical, electronic equipment"
+    },
+    "21 CFR 211.100": {
+      "current": "current",
+      "topic": "Written procedures; deviations"
+    },
+    "21 CFR 211.110": {
+      "current": "current",
+      "topic": "Sampling and testing of in-process materials"
+    },
+    "21 CFR 211.113": {
+      "current": "current",
+      "topic": "Control of microbiological contamination"
+    },
+    "21 CFR 211.122": {
+      "current": "current",
+      "topic": "Labeling issuance"
+    },
+    "21 CFR 211.142": {
+      "current": "current",
+      "topic": "Warehousing procedures"
+    },
+    "21 CFR 211.150": {
+      "current": "current",
+      "topic": "Distribution procedures"
+    },
+    "21 CFR 211.160": {
+      "current": "current",
+      "topic": "Laboratory controls, general"
+    },
+    "21 CFR 211.165": {
+      "current": "current",
+      "topic": "Testing and release for distribution"
+    },
+    "21 CFR 211.192": {
+      "current": "current",
+      "topic": "Production record review"
+    },
+    "21 CFR Part 11": {
+      "current": "current",
+      "topic": "Electronic records; electronic signatures"
+    },
+    "EU GMP Annex 1": {
+      "current": "2022 revision",
+      "outdated_designations": [
+        "2008",
+        "2008 revision",
+        "2003"
+      ],
+      "topic": "Manufacture of sterile medicinal products"
+    },
+    "EU GMP Annex 15": {
+      "current": "2015 revision",
+      "outdated_designations": [
+        "2001"
+      ],
+      "topic": "Qualification and validation",
+      "note": "current since 2015; a 2015-cited SOP is CURRENT"
+    },
+    "ICH Q2(R2)": {
+      "current": "Q2(R2)",
+      "supersedes": "Q2(R1)",
+      "outdated_designations": [
+        "Q2(R1)",
+        "Q2(R1) 2005"
+      ],
+      "topic": "Validation of analytical procedures"
+    },
+    "ICH Q9(R1)": {
+      "current": "Q9(R1)",
+      "supersedes": "Q9",
+      "outdated_designations": [
+        "Q9",
+        "Q9 2005"
+      ],
+      "topic": "Quality risk management"
+    },
+    "ICH Q10": {
+      "current": "current",
+      "topic": "Pharmaceutical quality system"
+    },
+    "ICH Q7": {
+      "current": "current",
+      "topic": "GMP for active pharmaceutical ingredients"
+    },
+    "USP <1058>": {
+      "current": "current",
+      "topic": "Analytical instrument qualification"
+    },
+    "USP <797>": {
+      "current": "current",
+      "topic": "Pharmaceutical compounding — sterile preparations"
+    },
+    "USP <71>": {
+      "current": "current",
+      "topic": "Sterility tests"
+    },
+    "USP <85>": {
+      "current": "current",
+      "topic": "Bacterial endotoxins test"
+    },
+    "ISO 14644-1": {
+      "current": "2015",
+      "outdated_designations": [
+        "1999"
+      ],
+      "topic": "Cleanroom classification of air cleanliness"
+    },
+    "ISO 13408-1": {
+      "current": "current",
+      "topic": "Aseptic processing of health care products"
+    },
+    "PDA TR-60": {
+      "current": "current",
+      "topic": "Process validation lifecycle"
+    },
+    "PDA TR-70": {
+      "current": "current",
+      "topic": "Cleaning validation"
+    },
+    "ISPE Baseline Guide: CIP": {
+      "current": "2nd Ed (2020)",
+      "topic": "Clean-in-place systems"
+    },
+    "GAMP 5": {
+      "current": "2nd Ed (2022)",
+      "outdated_designations": [
+        "1st Ed",
+        "2008"
+      ],
+      "topic": "Risk-based approach to GxP computerized systems"
+    }
+  }
+}

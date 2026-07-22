@@ -4,7 +4,10 @@
 output/
 
 # Real SOP corpora are confidential — never commit client documents.
-# The mock corpus in data/sops/ IS tracked; put real SOPs in data/sops_real/.
+# data/sops/ is YOUR corpus and is ignored wholesale (except its README).
+# The demo corpus lives in examples/mock_corpus/ and IS tracked.
+data/sops/*
+!data/sops/README.md
 data/sops_real/
 data/sops_client/
 *.private.md
