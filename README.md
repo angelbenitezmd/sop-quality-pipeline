@@ -97,10 +97,15 @@ into `data/sops/`.
 
 ```bash
 python3 -m sop_pipeline.cli run           # all 13 + both reports
-python3 -m sop_pipeline.cli run --module 05   # just the regulatory audit
+python3 -m sop_pipeline.cli run --module 5    # just the regulatory audit
 open output/report/index.html             # corpus dashboard
 open output/sops/index.html               # per-SOP assessments, worst first
 ```
+
+Any capability runs on its own with `--module N` (1-13) — the fast loop while tuning
+config or checking a fresh PDF conversion. See
+**[docs/RUNNING_MODULES.md](docs/RUNNING_MODULES.md)** for what each one answers, its
+runtime, and where its output lands.
 
 `data/sops/` is where your corpus goes and is **gitignored wholesale** — client
 documents cannot be committed by accident. While it is empty the pipeline falls back
