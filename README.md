@@ -39,6 +39,10 @@ genuinely covers the set; document-level analyses produce an assessment per SOP:
 - **Both** — regulatory audit (m05): each citation assessed individually, then rolled up
   per SOP and across the corpus
 
+## How it works (explainable AI)
+
+Every capability's exact method — the signals it reads, the formulas and thresholds it applies, a worked example, and an honest statement of what it *cannot* see — is documented in **[docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md)**. Written to be shown to reviewers and auditors: no trained or opaque models, every score traces back to counted words, matched patterns, or a config table. Start with the [shared signals](docs/methods/00_foundations.md), then the per-module cards.
+
 ## The 13 capabilities
 
 Each maps to a "Proven Capabilities" slide in the deck (Phase 4 = training, slide 13):
